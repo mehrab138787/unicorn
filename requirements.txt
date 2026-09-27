@@ -1,0 +1,6 @@
+telethon
+python-dotenv
+pysocks
+requests
+psycopg2-binary
+aiohttp
