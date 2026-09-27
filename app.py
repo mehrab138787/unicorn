@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 ✨ UNICORN ANONY BOT — ROYAL EDITION ✨
-Quiz + TruthOrDare + Live Countdown + Premium Emojis
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
@@ -44,9 +43,6 @@ logger = logging.getLogger("UnicornBot")
 logging.getLogger("telethon").setLevel(logging.WARNING)
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
 
-# ═════════════════════════════════════════════
-# 🎨 PREMIUM EMOJIS
-# ═════════════════════════════════════════════
 PREMIUM = {
     "laugh": "5368324170671202286", "joy": "5780769611324455942",
     "heart": "5443038326535759644", "party": "5456359790390093750",
@@ -140,9 +136,8 @@ async def safe_edit(event, text, **kw):
         raise
 
 
-async def safe_edit_msg(chat_id, msg_id, text, buttons=None):
-    """Robust message editor with retries"""
-    for attempt in range(3):
+async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=3):
+    for attempt in range(max_retry):
         try:
             await client.edit_message(chat_id, msg_id, text=text,
                                        buttons=buttons, parse_mode="html")
@@ -150,12 +145,15 @@ async def safe_edit_msg(chat_id, msg_id, text, buttons=None):
         except MessageNotModifiedError:
             return True
         except FloodWaitError as fwe:
-            logger.warning(f"flood wait {fwe.seconds}s")
-            if fwe.seconds > 5:
+            wait = fwe.seconds
+            logger.warning(f"🚦 flood wait {wait}s (try {attempt+1})")
+            if wait > 10:
                 return False
-            await asyncio.sleep(fwe.seconds + 1)
+            await asyncio.sleep(wait + 1)
         except Exception as e:
-            logger.warning(f"safe_edit_msg try{attempt}: {type(e).__name__}: {e}")
+            logger.warning(f"edit try{attempt+1}/{max_retry}: {type(e).__name__}: {str(e)[:80]}")
+            if "message to edit not found" in str(e).lower():
+                return False
             await asyncio.sleep(0.5)
     return False
 
@@ -244,9 +242,6 @@ TEMPLATES = [
     ("💎 راز نگفته", "چی رو همیشه می‌خواستی بهم بگی ولی نگفتی؟"),
 ]
 
-# ═════════════════════════════════════════════
-# 🧠 AI
-# ═════════════════════════════════════════════
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -274,9 +269,6 @@ TD_CATEGORIES_ALL = [
 TD_TURNS_OPTIONS = [1, 2, 3, 5]
 TD_TIMEOUT_OPTIONS = [30, 60, 120, 180]
 
-# ═════════════════════════════════════════════
-# 📚 TRUTH OR DARE FALLBACK BANK
-# ═════════════════════════════════════════════
 TD_BANK = {
     "truth": [
         "آخرین باری که از ته دل گریه کردی کی بود و چرا؟",
@@ -299,16 +291,6 @@ TD_BANK = {
         "چیزی که هیچ‌وقت به هیچ‌کس نگفتی چیه؟",
         "آخرین باری که به یه نفر حسادت کردی کی بود؟",
         "بزرگترین ترست چیه؟",
-        "اگه فقط یه آرزو داشتی، چی بود؟",
-        "کدوم عضو خانواده‌ت رو بیشتر از همه دوست داری؟",
-        "بدترین نصیحتی که بهت دادن چی بود؟",
-        "آخرین باری که خیلی خجالت‌زده شدی کِی بود؟",
-        "چیزی که همیشه می‌خوای یاد بگیری چیه؟",
-        "اگه یه روز رئیس جمهور بودی، اولین کارت چی بود؟",
-        "بدترین کادویی که گرفتی چی بود؟",
-        "چیزی که از بچگی آرزوش رو داشتی چیه؟",
-        "آخرین باری که با یه نفر به خاطر یه چیز کوچیک دعوا کردی کی بود؟",
-        "بزرگترین اشتباه زندگیت چیه؟",
     ],
     "truth18": [
         "تا حالا عاشق کسی شدی که نباید می‌شد؟",
@@ -325,18 +307,6 @@ TD_BANK = {
         "بدترین پیامی که تو زندگیت فرستادی چی بود؟",
         "چند تا از اعضای این گروه رو تو خیالت تصور کردی؟",
         "بدترین قرار عاشقانه‌ای که رفتی چطور بود؟",
-        "توی یه رابطه چی رو بیشتر از همه دوست داری؟",
-        "آخرین بار کی به کسی پیام دادی که پشیمون شدی؟",
-        "بدترین تیکه‌ای که به یه نفر انداختی چی بود؟",
-        "اگه بخوای یکی از اعضای گروه رو بوس کنی، کی رو انتخاب می‌کنی؟",
-        "چیزی که از یه رابطه قبلی یاد گرفتی چیه؟",
-        "بزرگترین شیطنت عاشقانه‌ت چی بود؟",
-        "اسمش چی بود؟ (آخرین نفری که بهش علاقه داشتی)",
-        "چند نفر رو تا حالا دوست داشتی؟",
-        "بدترین خیانت عاطفی که دیدی چطور بود؟",
-        "اگه بخوای یه شب رمزآلود با یکی از اعضای گروه بگذرونی، کی رو انتخاب می‌کنی؟",
-        "چیزی که توی یه رابطه حتماً نباید باشه چیه؟",
-        "آخرین بار کی به یه نفر گفتی «دوستت دارم» و راستش رو نگفتی؟",
     ],
     "dare": [
         "یه ویس ۱۵ ثانیه‌ای بفرست که با آهنگ مورد علاقه‌ت می‌رقصی و آواز می‌خونی!",
@@ -351,20 +321,6 @@ TD_BANK = {
         "اسم یه کار احمقانه که بچگی می‌کردی و الان یادت میاد رو بگو!",
         "پروفایل یه نفر از اعضای گروه رو یه بار کپی کن!",
         "۵ پیام آخرت توی یه چت رندوم رو کپی کن و توی گروه بفرست!",
-        "یه استیکر خودت بساز (با هر چی داری) و بفرست!",
-        "اسم یه عادت مسخره‌ت رو بگو که هیچ‌کس نمی‌دونه!",
-        "به یکی از اعضای گروه بگو دقیقاً چی فکر می‌کنی راجع بهش (بدون فحش)!",
-        "برای ۱ دقیقه توی گروه با ایموجی حرف بزن (بدون کلمه)!",
-        "اسم آخرین نفر توی مخاطبینت رو بگو و کیه!",
-        "یه عکس از پشت بوم خونت بگیر و بفرست!",
-        "با یه لهجه‌ی غلیظ یه جمله بگو و ویس بفرست!",
-        "اسم یه چیز که همیشه می‌خواستی بخری و نخریدی رو بگو!",
-        "به یکی از اعضای گروه یه لقب بامزه بده و دلیلش رو بگو!",
-        "برای ۳ دقیقه بعدی همه‌ی پیامات رو با «آقا/خانوم» بگو!",
-        "بگو آخرین باری که کی آهنگ گوش دادی و گریه کردی!",
-        "اسم یه شرمندگی که توی مهمونی برات پیش اومده رو بگو!",
-        "۵ تا از آخرین جستجوهای گوگلت رو بگو!",
-        "برای گروه یه بیو بنویس که خودت رو توصیف کنه!",
     ],
     "dare18": [
         "به یه نفر توی مخاطبینت که ۶ ماه باهاش حرف نزدی، بگو «تو همیشه توی فکر منی». اسکرین بفرست!",
@@ -377,16 +333,6 @@ TD_BANK = {
         "به یکی از اعضای گروه که باهاش صمیمی‌تر از همه‌ای بگو «تو رو بیشتر از اونی که فکر می‌کنی دوست دارم»!",
         "اسم یه چیز که مخفیانه از یکی از اعضای گروه می‌خوای بگو!",
         "بگو اگه یکی از اعضای گروه قرار بود عاشقش بشی، کی بود!",
-        "اسم یه چیز که توی یه رابطه دوست داری ولی هیچ‌وقت نگفتی رو بگو!",
-        "به یکی از اعضای گروه یه پیام مخفیانه بفرست که فقط خودش بفهمه!",
-        "بگو آخرین بار کی به یکی از اعضای گروه فکر شیطون کردی!",
-        "اسم یه کاری که توی مهمونی مخفیانه انجام دادی رو بگو!",
-        "بدترین موقعیتی که توش گیر کردی و مربوط به رابطه بود چیه؟",
-        "اگه بخوای با یکی از اعضای گروه یه قرار مخفیانه بذاری، کی رو انتخاب می‌کنی؟",
-        "اسم یه چیز که از یه نفر توی این گروه مخفی کردی رو بگو!",
-        "بگو بین اعضای گروه کی شایستگی بیشتری برای کراش شدن داره!",
-        "اسم یه فانتزی که همیشه داشتی و به هیچ‌کس نگفتی رو بگو!",
-        "آخرین بار کی به کسی توی این گروه حس عاشقانه داشتی؟",
     ],
 }
 
@@ -440,150 +386,217 @@ async def ai_generate_question(category):
     return None
 
 
+# ═════════════════════════════════════════════
+# 🎭 TRUTH OR DARE — SUPER FRIENDLY PROMPT
+# ═════════════════════════════════════════════
 async def ai_generate_td(kind, pname, used_texts=None):
-    """STRICT role: AI is host, not player"""
+    """Generate one truth/dare with a warm, casual, friendly tone"""
     if used_texts is None:
         used_texts = []
 
-    role_def = (
-        "You are the GAME HOST of a Persian Truth or Dare game on Telegram. "
-        "You CREATE questions and dares — you NEVER answer them. "
-        "You NEVER play the game. You NEVER reply like a human. "
-        "Your ONLY job: output ONE fresh question/dare for the given player. "
-        "You respond ONLY with valid JSON, nothing else."
-    )
-
-    prompts = {
+    # ═══════════════════════════════════════════
+    # 🎯 Config per category — with friendly vibe
+    # ═══════════════════════════════════════════
+    config = {
         "truth": {
             "label": "حقیقت",
+            "topic": "یک سوال صادقانه و صمیمی",
+            "vibe": "خودمونی، گرم، مثل یه رفیق نزدیک که کنارت نشسته",
             "theme": random.choice([
-                "خاطره‌ی شرم‌آور", "لحظه‌ی پشیمونی", "احساس مخفی",
-                "راز خانوادگی", "ترس شخصی", "آرزوی نگفته",
-                "عادت بد پنهان", "دروغ قدیمی", "لحظه‌ی خجالت",
+                "خاطره‌ی خنده‌دار", "لحظه‌ی خجالت‌آور", "پشیمونی قدیمی",
+                "راز کوچیک", "ترس پنهان", "آرزوی نگفته",
+                "عادت عجیب", "دروغ بی‌ضرر", "روز بد",
+                "احساس واقعی", "فکر نیمه‌شب", "خاطره‌ی بچگی",
             ]),
-            "example": "آخرین باری که از ته دل گریه کردی کی بود و چرا؟",
+            "examples": [
+                "علی جان، آخرین باری که از خنده روده‌بُر شدی و نتونستی خودت رو کنترل کنی کی بود؟",
+                "علی، راستش رو بگو، کدوم آهنگ رو وقتی ناراحتی صد بار پشت سر هم گوش می‌دی؟",
+                "بگو ببینم علی، بدترین دروغی که به مامانت گفتی چی بود و چطور لو رفت؟",
+                "علی جان، اگه یه روز نامرئی می‌شدی، اولین جایی که می‌رفتی کجا بود؟",
+                "بیا صادق باش علی، بدترین ویژگی خودت که هیچ‌وقت به کسی نگفتی چیه؟",
+                "علی، اون روزی که از مدرسه در رفتی و به مامانت دروغ گفتی، کجا رفتی؟",
+                "علی جان، چیزی که هنوزم از بچگیت خاطره‌ش اذیتت می‌کنه چیه؟",
+            ],
         },
         "truth18": {
             "label": "حقیقت +18",
+            "topic": "یک سوال جسورانه و شیطون‌کار",
+            "vibe": "شیطون، خودمونی، بازیگوش — مثل رفیقی که یه کم شیطونیه",
             "theme": random.choice([
-                "کراش قبلی", "رابطه‌ی مخفی", "خیانت عاطفی",
-                "دروغ عاشقانه", "خیال‌بافی رمانتیک", "پیام پشیمونی",
-                "کسی که مخفیانه دوستش داری", "اعتراف عاشقانه",
+                "کراش قدیمی", "رابطه‌ی مخفی", "دروغ عاشقانه",
+                "اعتراف جسورانه", "پیام پشیمونی", "خاطره‌ی شیطون",
+                "کسی که مخفیانه دوستش داری", "لحظه‌ی خجالت عاشقانه",
+                "دلخوری عاطفی", "اولین برخورد",
             ]),
-            "example": "بدترین کراش زندگیت کی بود و چرا بدترین بود؟",
+            "examples": [
+                "علی، بیا خودمونی، بدترین کراش زندگیت کی بود و چرا انقدر بد بود؟",
+                "راستش رو بگو علی، آخرین بار کی مخفیانه چک کردی ببینی طرف آنلاینه یا نه؟",
+                "علی جان، اگه مجبور بودی از این گروه یکی رو انتخاب کنی، کی رو انتخاب می‌کردی؟",
+                "بگو ببینم علی، بدترین پیامی که تو حالت شیطونی فرستادی و پشیمون شدی چی بود؟",
+                "علی، اسم کسی که هنوزم بهش فکر می‌کنی ولی به هیچ‌کس نگفتی؟",
+                "خودمونی بگو علی، اولین بار کی فهمیدی عاشق شدی و همه‌چیز خراب شد؟",
+                "علی جان، دروغی که به یکی از اعضای این گروه گفتی و هنوز ندونسته چیه؟",
+            ],
         },
         "dare": {
             "label": "جرعت",
+            "topic": "یک جرعت بامزه و قابل اجرا",
+            "vibe": "خنده‌دار، خودمونی، مثل یه شیطنت دوستانه",
             "theme": random.choice([
                 "ویس خنده‌دار", "استیکر عجیب", "پیام به مخاطب قدیمی",
-                "شعر بداهه", "لهجه‌ی غلیظ", "لو دادن یه راز کوچیک",
+                "شعر بداهه", "لهجه‌ی غلیظ", "لو دادن یه چیز کوچیک",
+                "کپی پروفایل", "تقلید صدا", "رقص بدون موزیک",
             ]),
-            "example": "یه ویس ۱۵ ثانیه‌ای بفرست که با آهنگ مورد علاقه‌ت آواز می‌خونی!",
+            "examples": [
+                "علی جان، یه ویس ۱۵ ثانیه‌ای بفرست که با آهنگ مورد علاقه‌ت آواز می‌خونی!",
+                "علی، اسم ۳ نفر از اعضای این گروه رو به ترتیب از بدترین تا بهترین بگو!",
+                "بیا علی، به آخرین نفر توی مخاطبینت پیام بده «سلام داشتم بهت فکر می‌کردم»!",
+                "علی جان، پروفایلت رو ۱ ساعت بذار عکس خنده‌دار خودت!",
+                "با لهجه‌ی غلیظ اصفهانی یه ویس بفرست که خودت رو معرفی کنی علی!",
+                "علی، ۱۰ تا استیکر رندوم پشت سر هم توی گروه بفرست!",
+                "بیا علی، اسم یه چیز که همه می‌دونن ولی تو انکارش می‌کنی رو بگو!",
+            ],
         },
         "dare18": {
             "label": "جرعت +18",
+            "topic": "یک جرعت جسورانه و هیجان‌انگیز",
+            "vibe": "جسورانه، شیطون، هیجان‌انگیز — بدون وقاحت",
             "theme": random.choice([
-                "پیام جسورانه به کراش قدیمی", "اعتراف مخفی",
-                "تیکه به یه عضو گروه", "لو دادن یه راز عاشقانه",
-                "اعتراف احساسی",
+                "پیام به کراش قدیمی", "اعتراف مخفی", "تیکه به عضو گروه",
+                "اعتراف احساسی", "لو دادن راز عاشقانه", "اعتراف خجالت‌آور",
             ]),
-            "example": "به یه نفر توی مخاطبینت که ۶ ماه باهاش حرف نزدی، بگو «تو همیشه توی فکر منی».",
+            "examples": [
+                "علی، به کسی که ۶ ماه باهاش حرف نزدی پیام بده «تو هنوز توی فکر منی»!",
+                "بیا علی، به یکی از اعضای این گروه بگو دقیقاً چی فکر می‌کنی راجع بهش!",
+                "علی جان، اسم اولین کسی که دوستش داشتی و یه خاطره ازش تعریف کن!",
+                "علی، به یکی از اعضای گروه بگو اگه بخوای یکی رو انتخاب کنی، کی رو انتخاب می‌کنی!",
+                "بیا علی، بدترین پیام عاشقانه‌ای که فرستادی رو بخون!",
+                "علی جان، بگو بین اعضای گروه کی رو بیشتر از همه دوست داری و چرا!",
+            ],
         },
     }
 
-    info = prompts[kind]
-    label = info["label"]
-    theme = info["theme"]
-    example = info["example"]
+    c = config[kind]
+    label = c["label"]
+    topic = c["topic"]
+    vibe = c["vibe"]
+    theme = c["theme"]
+    examples = c["examples"]
+    examples_txt = "\n".join([f"   {ex}" for ex in examples])
 
-    avoid_block = ""
+    avoid_txt = ""
     if used_texts:
-        last_7 = used_texts[-7:]
-        avoid_list = "\n".join([f"  - {t[:80]}" for t in last_7])
-        avoid_block = (
-            f"\n🚫 AVOID THESE (already used):\n{avoid_list}\n"
-            f"(Create something COMPLETELY DIFFERENT.)\n"
-        )
+        last = used_texts[-8:]
+        lst = "\n".join([f"   ✗ {t[:90]}" for t in last])
+        avoid_txt = f"\n\n⛔️ اینا رو قبلاً پرسیدیم — کاملاً متفاوت بساز:\n{lst}\n"
 
-    sys_msg = (
-        f"{role_def}\n"
-        f"═══════════════════════════════════════\n"
-        f"📌 TASK: Create ONE {label} for player named '{pname}'\n"
-        f"📌 THEME: {theme}\n"
-        f"═══════════════════════════════════════\n\n"
-        f"✍️ RULES:\n"
-        f"1. Write in Persian (Farsi), colloquial and natural.\n"
-        f"2. Maximum 1 sentence, max 180 characters.\n"
-        f"3. Start directly — NO intros like 'سوال:' or 'جرعت:'\n"
-        f"4. Use the player's name '{pname}' at the start.\n"
-        f"5. NO offensive, vulgar, or explicit words.\n"
-        f"6. Be creative — avoid clichés.\n"
-        f"7. Fun and engaging for a friendly group.\n"
-        f"{avoid_block}\n"
-        f"✅ GOOD EXAMPLE (reference only):\n«{example}»\n\n"
-        f"❌ BAD EXAMPLES:\n"
-        f"  • «باشه علی، تو بگو...» (chat reply)\n"
-        f"  • «من فکر می‌کنم...» (AI answering)\n"
-        f"  • «سوال بعدی چیه؟» (AI asking back)\n\n"
-        f"═══════════════════════════════════════\n"
-        f"🎯 OUTPUT (STRICT):\n"
-        f'{{"text": "متن {label} برای {pname}"}}\n'
-        f"ONLY this JSON. Nothing else.\n"
-        f"═══════════════════════════════════════"
+    # ═══════════════════════════════════════════
+    # 🎯 SUPER FRIENDLY PROMPT
+    # ═══════════════════════════════════════════
+    system_prompt = (
+        f"تو یه رفیق صمیمی و خودمونی هستی که داره بچه‌های گروه رو توی بازی «جرعت یا حقیقت» می‌چرخونه.\n"
+        f"لحنت گرم، صمیمی، و مثل کسی که سال‌هاست با اینا رفیقه.\n\n"
+
+        f"🎯 وظیفه‌ت:\n"
+        f"یه {topic} برای «{pname}» بساز.\n\n"
+
+        f"🔥 حس و حال:\n"
+        f"   • {vibe}\n"
+        f"   • طوری حرف بزن که انگار داری کنارش نشستی و لبخند می‌زنی\n"
+        f"   • خودمونی، بدون تکلف، بدون رسمی‌بازی\n"
+        f"   • بعضی وقتا با «بیا»، «راستش رو بگو»، «بگو ببینم» شروع کن\n\n"
+
+        f"📌 موضوع این نوبت: {theme}\n\n"
+
+        f"✅ قوانین:\n"
+        f"   1. یک جمله کوتاه — حداکثر ۱۵۰ کاراکتر\n"
+        f"   2. اسم «{pname}» توی جمله — می‌تونی با «{pname} جان» یا «{pname}» شروع کنی\n"
+        f"   3. سوال/جرعت باید مستقیم، مشخص و قابل جواب باشه\n"
+        f"   4. هیچ فحش یا محتوای مستهجن نباشه\n"
+        f"   5. هیچ مقدمه، برچسب، یا گیومه نداشته باشه\n"
+        f"   6. تو مجری هستی — جواب نمی‌دی، نظر نمی‌دی، تایید نمی‌کنی!\n"
+        f"   7. عین رفیق رفتار کن، عین ربات خشک نه\n\n"
+
+        f"💎 نمونه‌های درجه‌یک (سبکش رو بگیر، کپی نکن):\n"
+        f"{examples_txt}\n"
+        f"{avoid_txt}\n"
+
+        f"📤 خروجی:\n"
+        f"فقط یک خط متن. بدون JSON، بدون برچسب، بدون گیومه.\n"
+        f"مثل این: «{pname}، آخرین باری که از خنده روده‌بُر شدی کی بود؟»"
     )
 
-    user_msg = f"Generate the JSON now. ONE {label} for «{pname}» about '{theme}'."
+    user_prompt = (
+        f"یه {label} گرم و خودمونی برای «{pname}» بساز. "
+        f"موضوع: {theme}. کوتاه، بامزه، صمیمی."
+    )
 
     msgs = [
-        {"role": "system", "content": sys_msg},
-        {"role": "user", "content": user_msg},
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
     ]
 
     for model in AI_MODELS[:3]:
         for attempt in range(3):
             try:
-                t = 1.05 if attempt == 0 else (1.2 if attempt == 1 else 1.35)
-                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model)
-                raw = data["choices"][0]["message"]["content"]
-                obj = json.loads(raw)
-                txt = str(obj.get("text", "")).strip()
-                txt = txt.strip('"').strip("'").strip()
-                for prefix in [f"{label}:", f"{label}：", "سوال:", "جرعت:", "پاسخ:", "جواب:", "-", "•", "*"]:
-                    if txt.startswith(prefix):
-                        txt = txt[len(prefix):].strip()
-                if txt.startswith("«") and txt.endswith("»"):
-                    txt = txt[1:-1].strip()
+                temp = 1.1 if attempt == 0 else (1.3 if attempt == 1 else 1.5)
+                headers = {
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "model": model,
+                    "messages": msgs,
+                    "temperature": temp,
+                    "max_tokens": 200,
+                }
+                r = await asyncio.to_thread(
+                    lambda: requests.post(GROQ_URL, headers=headers,
+                                          json=payload, timeout=30)
+                )
+                if r.status_code >= 400:
+                    raise RuntimeError(f"HTTP {r.status_code}")
+                data = r.json()
+                txt = data["choices"][0]["message"]["content"].strip()
 
-                confusion_markers = ["باشه", "بله", "نه ", "خب ", "حتماً",
-                                     "من ", "منم ", "آره ", "قربونت",
-                                     "سلام ", "در خدمتم", "چی بگم",
-                                     "چشم ", "حالا ", "بذار "]
-                looks_like_chat = False
-                for marker in confusion_markers:
-                    if txt.startswith(marker):
-                        if any(qm in txt[:30] for qm in ["؟", "?"]):
-                            continue
-                        looks_like_chat = True
-                        break
-                if looks_like_chat:
-                    raise ValueError("AI confused — chat reply detected")
+                # Cleanup
+                txt = txt.strip('"').strip("'").strip("«").strip("»").strip()
+                for p in [f"{label}:", f"{label}：", "سوال:", "جرعت:", "حقیقت:",
+                          "پاسخ:", "جواب:", "❌", "✅", "-", "•", "*"]:
+                    if txt.startswith(p):
+                        txt = txt[len(p):].strip()
+                txt = re.sub(r'^["\']+', "", txt)
+                txt = re.sub(r'["\']+$', "", txt)
+                txt = txt.split("\n")[0].strip()
 
-                if kind in ("truth", "truth18"):
-                    if "؟" not in txt and "?" not in txt:
-                        raise ValueError("no question mark")
+                # Fix duplicate name
+                parts = txt.split("،")
+                if len(parts) >= 2 and parts[0].strip() == parts[1].strip():
+                    txt = "،".join(parts[1:]).strip()
 
-                if not txt or len(txt) < 15 or len(txt) > 250:
-                    raise ValueError(f"bad length: {len(txt)}")
+                # Validation
+                if not txt or len(txt) < 15:
+                    raise ValueError(f"too short: {len(txt)}")
+                if len(txt) > 200:
+                    txt = txt[:197] + "..."
+                bad_starts = ["باشه", "بله", "خب ", "حتما", "چشم",
+                              "سلام ", "در خدمتم", "من نمی", "بذار ", "الان "]
+                for bs in bad_starts:
+                    if txt.startswith(bs) and "؟" not in txt[:30]:
+                        raise ValueError(f"chat-like: {txt[:40]}")
+                if kind in ("truth", "truth18") and "؟" not in txt and "?" not in txt:
+                    txt = txt.rstrip(".") + "؟"
                 if any(txt.strip() == u.strip() for u in used_texts):
                     raise ValueError("duplicate")
 
-                logger.info(f"✅ TD [{kind}] via {model}: {txt[:50]}")
-                return txt[:500]
-            except Exception as e:
-                logger.warning(f"TD {model} try{attempt}: {e}")
-                await asyncio.sleep(0.3)
+                logger.info(f"✅ TD[{kind}] {model} t={temp}: {txt[:60]}")
+                return txt
 
-    logger.warning(f"AI TD failed → fallback bank")
+            except Exception as e:
+                logger.warning(f"TD {model} t{attempt}: {e}")
+                await asyncio.sleep(0.4)
+
+    logger.warning(f"TD fallback bank: {kind}")
     bank = TD_BANK.get(kind, [])
     if bank:
         unused = [t for t in bank if t not in used_texts]
@@ -592,9 +605,6 @@ async def ai_generate_td(kind, pname, used_texts=None):
     return None
 
 
-# ═════════════════════════════════════════════
-# 💾 DB
-# ═════════════════════════════════════════════
 class DB:
     def __init__(self, dsn):
         self.conn = psycopg2.connect(dsn)
@@ -787,9 +797,6 @@ def clear_state(uid):
     _user_states.pop(uid, None)
 
 
-# ═════════════════════════════════════════════
-# ADMIN MENU
-# ═════════════════════════════════════════════
 async def send_admin_menu(event, edit=False):
     text = (
         f"{E('crown', '👑')} <b>UNICORN · ADMIN PANEL</b> {E('crown', '👑')}\n"
@@ -842,9 +849,6 @@ def build_challenge_text(cid, title, question, ch_type, options, deadline):
     return body + extra
 
 
-# ═════════════════════════════════════════════
-# 🎮 QUIZ ENGINE
-# ═════════════════════════════════════════════
 def create_setup_game(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
          "admin_id": aid, "group_id": gid, "categories": [],
@@ -1155,71 +1159,51 @@ async def quiz_ask_question(g, uid, ci):
     g["timeout_task"] = asyncio.create_task(quiz_live_countdown(g, uid, total))
 
 
-# ═════════════════════════════════════════════
-# ⏱ LIVE COUNTDOWN (FIXED)
-# ═════════════════════════════════════════════
 async def quiz_live_countdown(g, uid, total):
-    """Live timer updated every second — fixed for reliability"""
+    logger.info(f"⏱ countdown {total}s uid={uid}")
     try:
         gid = g["group_id"]
         last_shown = None
         for remaining in range(total, -1, -1):
             cq = g.get("current_question")
-            if not cq or cq.get("answered") or cq.get("player") != uid:
-                return
+            if not cq or cq.get("answered") or cq.get("player") != uid: return
             p = g["players"].get(uid)
-            if not p or cq.get("msg_id") is None:
-                return
-
+            if not p: return
+            if cq.get("msg_id") is None:
+                await asyncio.sleep(0.5); continue
             bar = time_bar_colored(remaining, total)
             tb = time_badge(remaining, total)
             pct = int(100 * remaining / total) if total > 0 else 0
-
             if remaining <= 3 and remaining > 0:
-                time_warn = f"{E('alert', '🚨')} <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
+                tw = f"{E('alert', '🚨')} <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
             elif remaining == 0:
-                time_warn = f"{E('hourglass', '⏰')} <b>وقت تموم شد!</b>"
+                tw = f"{E('hourglass', '⏰')} <b>وقت تموم شد!</b>"
             else:
-                time_warn = f"{tb} <b>زمان:</b> <code>{remaining}</code> ثانیه"
-
+                tw = f"{tb} <b>زمان:</b> <code>{remaining}</code> ثانیه"
             labels = ["۱", "۲", "۳", "۴"]
             btns = [[Button.inline(f"{labels[i]}. {opt[:60]}", data=f"quiz_ans:{i}".encode())]
                     for i, opt in enumerate(cq["options"])]
             btns.append([Button.inline("⏭ رد کردن نوبت (ادمین)", data=b"quiz_skip_turn")])
-
             text = (
                 f"{cq['category_emoji']} <b>سوال {h(cq['category'])}</b> — نوبت <b>{h(p['name'])}</b>\n"
                 f"{DIV}\n\n"
                 f"{E('brain', '🧠')} <b>{h(cq['question'])}</b>\n\n"
-                f"{DIV2}\n"
-                f"{time_warn}\n"
-                f"{bar}  <b>{pct}%</b>\n"
+                f"{DIV2}\n{tw}\n{bar}  <b>{pct}%</b>\n"
                 f"{E('bolt', '⚡')} درست <b>+1</b> | غلط <b>-1</b>\n"
                 f"{E('star', '⭐')} امتیاز فعلی: <code>{p['score']}</code>\n"
                 f"{DIV}\n\n"
                 f"{E('target', '🎯')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:"
             )
-
-            # Skip if same text (avoid editing when nothing changed)
             if text != last_shown:
                 ok = await safe_edit_msg(gid, cq["msg_id"], text, buttons=btns)
-                if ok:
-                    last_shown = text
-                else:
-                    logger.warning(f"countdown edit failed at {remaining}s")
-
-            if remaining == 0:
-                break
+                if ok: last_shown = text
+            if remaining == 0: break
             await asyncio.sleep(1)
-
-        # Timeout handling
         cq = g.get("current_question")
         if cq and not cq.get("answered") and cq.get("player") == uid:
             await quiz_handle_timeout(g, uid)
-    except asyncio.CancelledError:
-        return
-    except Exception as e:
-        logger.exception(f"quiz cd err: {e}")
+    except asyncio.CancelledError: return
+    except Exception as e: logger.exception(f"cd err: {e}")
 
 
 async def quiz_handle_timeout(g, uid):
@@ -1241,8 +1225,7 @@ async def quiz_handle_timeout(g, uid):
         await safe_edit_msg(g["group_id"], cq["msg_id"],
             text=(f"{E('hourglass', '⏰')} <b>وقت تموم شد!</b>\n{DIV}\n\n"
                   f"{E('user', '👤')} <b>{h(p['name'])}</b> نتونست جواب بده\n\n"
-                  f"{E('check', '✅')} <b>جواب درست:</b>\n"
-                  f"     <b>{h(ct)}</b>\n\n"
+                  f"{E('check', '✅')} <b>جواب درست:</b>\n     <b>{h(ct)}</b>\n\n"
                   f"{E('bolt', '⚡')} امتیاز: <code>-1</code>\n"
                   f"{E('star', '⭐')} امتیاز فعلی: <code>{p['score']}</code>"),
             buttons=btns)
@@ -1384,9 +1367,6 @@ async def quiz_finish(g, winner_uid=None):
     ACTIVE_GAMES.pop(g["group_id"], None)
 
 
-# ═════════════════════════════════════════════
-# 🎭 TRUTH OR DARE ENGINE
-# ═════════════════════════════════════════════
 def create_td_setup(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
          "admin_id": aid, "group_id": gid,
@@ -1643,6 +1623,7 @@ async def td_next_turn(g):
 
 
 async def td_live_countdown(g, uid, total):
+    logger.info(f"⏱ TD countdown {total}s")
     try:
         gid = g["group_id"]
         last_shown = None
@@ -1651,7 +1632,7 @@ async def td_live_countdown(g, uid, total):
                 return
             p = g["players"].get(uid)
             if not p or g.get("turn_msg_id") is None:
-                return
+                await asyncio.sleep(0.5); continue
             bar = time_bar_colored(remaining, total)
             tb = time_badge(remaining, total)
             pct = int(100 * remaining / total) if total > 0 else 0
@@ -1674,9 +1655,7 @@ async def td_live_countdown(g, uid, total):
                 f"{DIV}\n\n"
                 f"{E('target', '🎯')} <b>نوبت {h(p['name'])}</b>\n"
                 f"{E('chart', '📊')} نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
-                f"{DIV2}\n"
-                f"{tw}\n"
-                f"{bar}  <b>{pct}%</b>\n"
+                f"{DIV2}\n{tw}\n{bar}  <b>{pct}%</b>\n"
                 f"{DIV2}\n\n"
                 f"{E('sparkle', '✨')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
                 f"  🎭 <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
@@ -1687,8 +1666,7 @@ async def td_live_countdown(g, uid, total):
             )
             if text != last_shown:
                 ok = await safe_edit_msg(gid, g["turn_msg_id"], text, buttons=rows)
-                if ok:
-                    last_shown = text
+                if ok: last_shown = text
             if remaining == 0: break
             await asyncio.sleep(1)
         if g.get("current_player") == uid and g.get("current_state") == "picking_choice":
@@ -1723,7 +1701,7 @@ async def td_play(g, uid, kind):
                          f"{E('brain', '🧠')} <i>هوش مصنوعی در حال ساخت...</i>",
                          parse_mode="html")
     txt = None
-    for attempt in range(3):
+    for _ in range(3):
         candidate = await ai_generate_td(kind, p["name"], g.get("used_texts", []))
         if candidate and candidate not in g["used_texts"]:
             txt = candidate; break
@@ -1812,9 +1790,6 @@ async def td_finish(g):
     TD_ACTIVE_GAMES.pop(g["group_id"], None)
 
 
-# ═════════════════════════════════════════════
-# GROUP HANDLER
-# ═════════════════════════════════════════════
 @client.on(events.NewMessage())
 async def on_group_message(event):
     try:
@@ -1898,9 +1873,6 @@ async def on_group_message(event):
     except Exception as ex: logger.exception(f"group handler: {ex}")
 
 
-# ═════════════════════════════════════════════
-# PM HANDLER
-# ═════════════════════════════════════════════
 @client.on(events.NewMessage(func=lambda e: e.is_private))
 async def on_private(event):
     try:
@@ -1975,9 +1947,7 @@ async def on_private(event):
             return
 
         if raw == "/help":
-            await safe_respond(event, f"{E('info', 'ℹ️')} /me /top /mylink /help",
-                               parse_mode="html")
-            return
+            await safe_respond(event, f"{E('info', 'ℹ️')} /me /top /mylink /help", parse_mode="html"); return
         if raw == "/me":
             sc = db.get_score(uid) or {}
             rank = db.get_rank(uid); nr = db.count_anon_received(uid)
@@ -2034,9 +2004,7 @@ async def on_private(event):
         if raw.startswith("/search") and is_admin(uid):
             parts = raw.split(None, 1)
             if len(parts) < 2:
-                await safe_respond(event, f"{E('search', '🔍')} <code>/search کلمه</code>",
-                                   parse_mode="html")
-                return
+                await safe_respond(event, f"{E('search', '🔍')} <code>/search کلمه</code>", parse_mode="html"); return
             res = db.search_challenges(uid, parts[1].strip())
             if not res:
                 await safe_respond(event, f"{E('info', 'ℹ️')} نتیجه‌ای نیس", parse_mode="html"); return
@@ -2187,16 +2155,12 @@ async def _ask_group(event, data):
     await safe_respond(event, f"{E('group', '🏢')} کدوم گروه؟", buttons=btns, parse_mode="html")
 
 
-# ═════════════════════════════════════════════
-# CALLBACK HANDLER
-# ═════════════════════════════════════════════
 @client.on(events.CallbackQuery())
 async def on_cb(event):
     try:
         uid = event.sender_id
         data = event.data.decode("utf-8", "ignore")
 
-        # QUIZ: JOIN
         if data == "quiz_join":
             g = _find_game_for_callback(event)
             if not g: await event.answer("❌ بازی پیدا نشد!", alert=True); return
@@ -2362,7 +2326,6 @@ async def on_cb(event):
             SETUP_GAMES.pop(uid, None)
             await quiz_broadcast_join(g); return
 
-        # TRUTH OR DARE
         if data == "td_join":
             g = _find_td_game(event)
             if not g: await event.answer("❌", alert=True); return
@@ -2516,7 +2479,6 @@ async def on_cb(event):
             except Exception: pass
             return
 
-        # OTHER
         if data == "cancel":
             clear_state(uid)
             await event.answer("❌ لغو شد")
@@ -2727,9 +2689,6 @@ async def on_cb(event):
         except Exception: pass
 
 
-# ═════════════════════════════════════════════
-# HELPERS
-# ═════════════════════════════════════════════
 async def _render_challenges_page(event, chs, page=0, per_page=5):
     total = len(chs)
     pages = max(1, (total + per_page - 1) // per_page)
@@ -2830,9 +2789,6 @@ async def deadline_watcher():
         await asyncio.sleep(60)
 
 
-# ═════════════════════════════════════════════
-# WEB SERVER
-# ═════════════════════════════════════════════
 async def start_web_server():
     app = web.Application()
     async def health(request):
@@ -2840,9 +2796,7 @@ async def start_web_server():
     async def root(request):
         return web.Response(text=(
             f"🦄 UNICORN ANONY BOT — ROYAL EDITION\n"
-            f"Status: Running\n"
-            f"Admins: {len(ALL_ADMINS)}\n"
-            f"Time: {now_str()}"
+            f"Status: Running\nAdmins: {len(ALL_ADMINS)}\nTime: {now_str()}"
         ), content_type="text/plain")
     app.router.add_get("/", root)
     app.router.add_get("/health", health)
@@ -2851,15 +2805,12 @@ async def start_web_server():
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
-    logger.info(f"🌐 Web server listening on 0.0.0.0:{PORT}")
+    logger.info(f"🌐 Web server on 0.0.0.0:{PORT}")
 
 
-# ═════════════════════════════════════════════
-# MAIN
-# ═════════════════════════════════════════════
 async def main():
     global BOT_USERNAME
-    logger.info("👑 UNICORN ROYAL Bot starting...")
+    logger.info("👑 UNICORN ROYAL starting...")
     if not BOT_TOKEN: raise ValueError("❌ BOT_TOKEN لازمه")
     if not OWNER_ID: raise ValueError("❌ OWNER_ID لازمه")
     if not DATABASE_URL: raise ValueError("❌ DATABASE_URL لازمه")
@@ -2869,7 +2820,7 @@ async def main():
     await client.start(bot_token=BOT_TOKEN)
     me = await client.get_me()
     BOT_USERNAME = me.username
-    logger.info(f"✅ Bot connected: @{BOT_USERNAME} (ID: {me.id})")
+    logger.info(f"✅ Bot: @{BOT_USERNAME} (ID: {me.id})")
     try:
         await safe_send(OWNER_ID,
                         f"{E('check', '✅')} <b>ربات روشن شد</b>\n{DIV}\n\n"
@@ -2881,7 +2832,7 @@ async def main():
                         parse_mode="html")
     except Exception as e: logger.warning(f"notify owner: {e}")
     asyncio.create_task(deadline_watcher())
-    logger.info("✅ Ready! Listening for updates...")
+    logger.info("✅ Ready!")
     await client.run_until_disconnected()
 
 
