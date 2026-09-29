@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ✨ UNICORN ANONY BOT — ROYAL EDITION ✨
++ 🕵️ RIDDLE DETECTIVE MODE
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
@@ -18,16 +19,13 @@ API_ID = int(os.getenv("API_ID", "6") or 6)
 API_HASH = os.getenv("API_HASH", "eb06d4abfb49dc3eeb1aeb98ae0f581e").strip()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.getenv("OWNER_ID", "0") or 0)
-
 _admins_str = os.getenv("ADMIN_IDS", "").strip()
 EXTRA_ADMINS = [int(x) for x in _admins_str.split(",") if x.strip().isdigit()]
-ALL_ADMINS = set([OWNER_ID] + EXTRA_ADMINS)
-ALL_ADMINS.discard(0)
+ALL_ADMINS = set([OWNER_ID] + EXTRA_ADMINS); ALL_ADMINS.discard(0)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if DATABASE_URL and "render.com" in DATABASE_URL and "sslmode" not in DATABASE_URL:
-    sep = "&" if "?" in DATABASE_URL else "?"
-    DATABASE_URL = DATABASE_URL + sep + "sslmode=require"
+    DATABASE_URL += ("&" if "?" in DATABASE_URL else "?") + "sslmode=require"
 
 SESSION_NAME = os.getenv("SESSION_NAME", "anony_bot_session")
 PROXY_HOST = os.getenv("PROXY_HOST", "").strip()
@@ -36,8 +34,7 @@ PORT = int(os.getenv("PORT", "10000"))
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 BOT_USERNAME = ""
 
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s │ %(levelname)-8s │ %(message)s",
+logging.basicConfig(level=logging.INFO, format="%(asctime)s │ %(levelname)-8s │ %(message)s",
                     datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger("UnicornBot")
 logging.getLogger("telethon").setLevel(logging.WARNING)
@@ -70,24 +67,22 @@ PREMIUM = {
     "globe": "5271604874419647061", "movie": "5443038326535759644",
     "music": "5456359790390093750", "laptop": "5404654051945521778",
     "medal": "5458603043203327669", "skip": "5424972470023104089",
+    "detective": "5424972470023104089", "clue": "5271604874419647061",
+    "knife": "5447644880824181073", "eye": "5397782960512444700",
 }
 
 
-def E(key, fallback):
-    eid = PREMIUM.get(key)
-    if eid:
-        return f'<tg-emoji emoji-id="{eid}">{fallback}</tg-emoji>'
-    return fallback
+def E(k, fb):
+    eid = PREMIUM.get(k)
+    return f'<tg-emoji emoji-id="{eid}">{fb}</tg-emoji>' if eid else fb
 
 
 DIV = "━━━━━━━━━━━━━━━━━━━━━━━━━━"
 DIV2 = "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
-
 _TG_EMOJI_RE = re.compile(r'<tg-emoji emoji-id="\d+">([^<]*)</tg-emoji>')
 
 
-def strip_premium(text):
-    return _TG_EMOJI_RE.sub(r"\1", text)
+def strip_premium(t): return _TG_EMOJI_RE.sub(r"\1", t)
 
 
 def _emoji_err(ex):
@@ -96,139 +91,104 @@ def _emoji_err(ex):
 
 
 async def safe_reply(event, text, **kw):
-    try:
-        return await event.reply(text, **kw)
+    try: return await event.reply(text, **kw)
     except Exception as ex:
-        if _emoji_err(ex):
-            return await event.reply(strip_premium(text), **kw)
+        if _emoji_err(ex): return await event.reply(strip_premium(text), **kw)
         raise
 
 
 async def safe_send(peer, text, **kw):
-    try:
-        return await client.send_message(peer, text, **kw)
+    try: return await client.send_message(peer, text, **kw)
     except Exception as ex:
-        if _emoji_err(ex):
-            return await client.send_message(peer, strip_premium(text), **kw)
+        if _emoji_err(ex): return await client.send_message(peer, strip_premium(text), **kw)
         raise
 
 
 async def safe_respond(event, text, **kw):
-    try:
-        return await event.respond(text, **kw)
+    try: return await event.respond(text, **kw)
     except Exception as ex:
-        if _emoji_err(ex):
-            return await event.respond(strip_premium(text), **kw)
+        if _emoji_err(ex): return await event.respond(strip_premium(text), **kw)
         raise
 
 
 async def safe_edit(event, text, **kw):
-    try:
-        return await event.edit(text, **kw)
-    except MessageNotModifiedError:
-        return None
+    try: return await event.edit(text, **kw)
+    except MessageNotModifiedError: return None
     except Exception as ex:
         if _emoji_err(ex):
-            try:
-                return await event.edit(strip_premium(text), **kw)
-            except MessageNotModifiedError:
-                return None
+            try: return await event.edit(strip_premium(text), **kw)
+            except MessageNotModifiedError: return None
         raise
 
 
 async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=3):
     for attempt in range(max_retry):
         try:
-            await client.edit_message(chat_id, msg_id, text=text,
-                                       buttons=buttons, parse_mode="html")
+            await client.edit_message(chat_id, msg_id, text=text, buttons=buttons, parse_mode="html")
             return True
-        except MessageNotModifiedError:
-            return True
+        except MessageNotModifiedError: return True
         except FloodWaitError as fwe:
             wait = fwe.seconds
-            logger.warning(f"🚦 flood wait {wait}s (try {attempt+1})")
-            if wait > 10:
-                return False
+            logger.warning(f"🚦 flood {wait}s (try {attempt+1})")
+            if wait > 10: return False
             await asyncio.sleep(wait + 1)
         except Exception as e:
             logger.warning(f"edit try{attempt+1}/{max_retry}: {type(e).__name__}: {str(e)[:80]}")
-            if "message to edit not found" in str(e).lower():
-                return False
+            if "message to edit not found" in str(e).lower(): return False
             await asyncio.sleep(0.5)
     return False
 
 
 def h(t):
-    if t is None:
-        return ""
+    if t is None: return ""
     return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def now_str():
-    return datetime.now(IRAN_TZ).strftime("%Y/%m/%d - %H:%M:%S")
-
-
-def now_iso():
-    return datetime.now(IRAN_TZ).isoformat()
+def now_str(): return datetime.now(IRAN_TZ).strftime("%Y/%m/%d - %H:%M:%S")
+def now_iso(): return datetime.now(IRAN_TZ).isoformat()
 
 
 def user_name(u):
-    if not u:
-        return "ناشناس"
-    n = getattr(u, "first_name", "") or ""
-    l = getattr(u, "last_name", "") or ""
+    if not u: return "ناشناس"
+    n = (getattr(u, "first_name", "") or "").strip()
+    l = (getattr(u, "last_name", "") or "").strip()
     full = (n + " " + l).strip()
     return full or getattr(u, "username", None) or str(getattr(u, "id", "?"))
 
 
-def is_admin(uid):
-    return uid in ALL_ADMINS
+def is_admin(uid): return uid in ALL_ADMINS
 
 
 def parse_duration(text):
-    if not text:
-        return None
+    if not text: return None
     t = str(text).strip().lower()
-    if t in ("", "0", "-", "نه", "ندارد", "بدون", "skip", "none", "خالی"):
-        return None
+    if t in ("", "0", "-", "نه", "ندارد", "بدون", "skip", "none", "خالی"): return None
     m = re.match(r"^(\d+)\s*(m|min|mins|د|دقیقه|h|hr|hrs|س|ساعت|d|day|days|روز)?$", t)
-    if not m:
-        return None
-    n = int(m.group(1))
-    unit = (m.group(2) or "m").strip()
-    if unit in ("m", "min", "mins", "د", "دقیقه"):
-        return timedelta(minutes=n)
-    if unit in ("h", "hr", "hrs", "س", "ساعت"):
-        return timedelta(hours=n)
-    if unit in ("d", "day", "days", "روز"):
-        return timedelta(days=n)
+    if not m: return None
+    n = int(m.group(1)); unit = (m.group(2) or "m").strip()
+    if unit in ("m", "min", "mins", "د", "دقیقه"): return timedelta(minutes=n)
+    if unit in ("h", "hr", "hrs", "س", "ساعت"): return timedelta(hours=n)
+    if unit in ("d", "day", "days", "روز"): return timedelta(days=n)
     return timedelta(minutes=n)
 
 
 def time_bar_colored(remaining, total, width=18):
-    if total <= 0:
-        return "⬜" * width
+    if total <= 0: return "⬜" * width
     pct = max(0, min(100, int(100 * remaining / total)))
-    filled = int(pct / 100 * width)
-    empty = width - filled
-    if pct > 60:
-        return "🟩" * filled + "⬜" * empty
-    elif pct > 30:
-        return "🟨" * filled + "⬜" * empty
-    else:
-        return "🟥" * filled + "⬜" * empty
+    f = int(pct / 100 * width); e = width - f
+    if pct > 60: return "🟩" * f + "⬜" * e
+    if pct > 30: return "🟨" * f + "⬜" * e
+    return "🟥" * f + "⬜" * e
 
 
-def time_badge(remaining, total):
-    if total <= 0:
-        return "⚪"
-    pct = remaining / total * 100
-    if pct > 60:
-        return "🟢"
-    elif pct > 30:
-        return "🟡"
-    else:
-        return "🔴"
+def time_badge(r, t):
+    if t <= 0: return "⚪"
+    p = r / t * 100
+    return "🟢" if p > 60 else ("🟡" if p > 30 else "🔴")
+
+
+def mmss(sec):
+    return f"{sec//60:02d}:{sec%60:02d}"
 
 
 MAX_ANSWER_LEN = 1500
@@ -244,11 +204,8 @@ TEMPLATES = [
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-
-AI_MODELS = [
-    "openai/gpt-oss-120b", "llama-3.3-70b-versatile",
-    "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "llama-3.1-8b-instant",
-]
+AI_MODELS = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile",
+             "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "llama-3.1-8b-instant"]
 
 QUIZ_CATEGORIES = [
     ("book", "📖", "تاریخی"), ("ball", "⚽", "ورزشی"),
@@ -257,7 +214,6 @@ QUIZ_CATEGORIES = [
     ("music", "🎵", "موسیقی"), ("book", "📚", "ادبیات"),
     ("laptop", "💻", "فناوری"), ("brain", "🧠", "عمومی"),
 ]
-
 QUIZ_TIME_OPTIONS = [15, 30, 45, 60]
 QUIZ_Q_OPTIONS = [3, 5, 7, 10]
 QUIZ_TARGET_OPTIONS = [0, 5, 10, 15, 20]
@@ -269,9 +225,26 @@ TD_CATEGORIES_ALL = [
 TD_TURNS_OPTIONS = [1, 2, 3, 5]
 TD_TIMEOUT_OPTIONS = [30, 60, 120, 180]
 
+# ═══════════════════════════════════════════════════════════
+# 🕵️ RIDDLE — بازی معما
+# ═══════════════════════════════════════════════════════════
+RIDDLE_CATEGORIES = [
+    ("murder", "🔪", "قتل و جنایت"),
+    ("theft", "💎", "سرقت"),
+    ("missing", "🕵️", "گم شدن"),
+    ("mystery", "🔍", "رمز و راز"),
+    ("historical", "📜", "تاریخی"),
+    ("scientific", "🔬", "علمی"),
+    ("logical", "🧩", "منطقی"),
+    ("horror", "👻", "ترسناک"),
+]
+RIDDLE_TIME_OPTIONS = [90, 120]
+RIDDLE_SETUP_GAMES = {}
+RIDDLE_ACTIVE_GAMES = {}
+
 
 # ═══════════════════════════════════════════════════════════
-# 🎭 TD_BANK — بانک آماده (بدون هوش مصنوعی)
+# 🎭 TD_BANK
 # ═══════════════════════════════════════════════════════════
 TD_BANK = {
     "truth": [
@@ -766,82 +739,64 @@ TD_BANK = {
     ],
 }
 
-
-# ═══════════════════════════════════════════════════════════
-# 🎭 TD ENGINE
-# ═══════════════════════════════════════════════════════════
 TD_DECOR = {
-    "truth":   ("sparkle", "✨", "gem", "💎"),
+    "truth": ("sparkle", "✨", "gem", "💎"),
     "truth18": ("fire", "🔥", "heart", "❤️"),
-    "dare":    ("bolt", "⚡", "party", "🎉"),
-    "dare18":  ("heart", "💋", "fire", "🔥"),
+    "dare": ("bolt", "⚡", "party", "🎉"),
+    "dare18": ("heart", "💋", "fire", "🔥"),
 }
 
 
 def get_td_from_bank(kind, used_texts=None):
-    if used_texts is None:
-        used_texts = []
+    if used_texts is None: used_texts = []
     bank = TD_BANK.get(kind, [])
-    if not bank:
-        return None
+    if not bank: return None
     used_set = set(used_texts)
     unused = [t for t in bank if t not in used_set]
     pool = unused if unused else bank
     for _ in range(15):
-        choice = random.choice(pool)
-        if choice not in used_set:
-            return choice
+        c = random.choice(pool)
+        if c not in used_set: return c
     return random.choice(pool)
 
 
 def decorate_td_text(kind, text):
-    """متن سوال/جرعت رو با ایموجی پرمیوم تزئین می‌کنه"""
-    a_key, a_fb, b_key, b_fb = TD_DECOR.get(kind, ("sparkle", "✨", "gem", "💎"))
-    pre = E(a_key, a_fb)
-    post = E(b_key, b_fb)
-    return f"{pre}  {text}  {post}"
+    a_k, a_f, b_k, b_f = TD_DECOR.get(kind, ("sparkle", "✨", "gem", "💎"))
+    return f"{E(a_k, a_f)}  {text}  {E(b_k, b_f)}"
 
 
-SETUP_GAMES = {}
-ACTIVE_GAMES = {}
-TD_SETUP_GAMES = {}
-TD_ACTIVE_GAMES = {}
+SETUP_GAMES = {}; ACTIVE_GAMES = {}
+TD_SETUP_GAMES = {}; TD_ACTIVE_GAMES = {}
 
 
-def _ai_call_sync(messages, temperature, model):
+def _ai_call_sync(messages, temperature, model, max_tokens=800):
     payload = {"model": model, "messages": messages, "temperature": temperature,
-               "response_format": {"type": "json_object"}}
+               "max_tokens": max_tokens}
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    r = requests.post(GROQ_URL, headers=headers, json=payload, timeout=35)
-    if r.status_code >= 400:
-        raise RuntimeError(f"HTTP {r.status_code}")
+    r = requests.post(GROQ_URL, headers=headers, json=payload, timeout=50)
+    if r.status_code >= 400: raise RuntimeError(f"HTTP {r.status_code}")
     return r.json()
 
 
 async def ai_generate_question(category):
-    sys_msg = (
-        "Persian quiz maker. Respond ONLY with JSON:\n"
-        '{"question": "متن", "options": ["1","2","3","4"], "correct": 0}\n'
-        "Rules: Persian. correct=0-based. Exactly 4 options. Only one correct. Random position."
-    )
+    sys_msg = ("Persian quiz maker. Respond ONLY with JSON:\n"
+               '{"question":"متن","options":["1","2","3","4"],"correct":0}\n'
+               "Rules: Persian. correct=0-based. Exactly 4 options. Only one correct. Random position.")
     msgs = [{"role": "system", "content": sys_msg},
             {"role": "user", "content": f"سوال چهارگزینه‌ای جذاب از «{category}»"}]
     for model in AI_MODELS:
         for att in range(2):
             try:
                 t = 0.9 if att == 0 else 1.1
-                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model)
+                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model, 500)
                 obj = json.loads(data["choices"][0]["message"]["content"])
                 opts = obj.get("options")
-                if not isinstance(opts, list) or len(opts) != 4:
-                    raise ValueError("bad")
+                if not isinstance(opts, list) or len(opts) != 4: raise ValueError("bad")
                 if not isinstance(obj.get("correct"), int) or not (0 <= obj["correct"] <= 3):
                     raise ValueError("bad")
-                if not obj.get("question"):
-                    raise ValueError("bad")
+                if not obj.get("question"): raise ValueError("bad")
                 opts = [str(o).strip()[:80] for o in opts]
-                if len(set(opts)) < 4:
-                    raise ValueError("dup")
+                if len(set(opts)) < 4: raise ValueError("dup")
                 ct = opts[obj["correct"]]
                 random.shuffle(opts)
                 return {"question": str(obj["question"]).strip()[:400],
@@ -852,6 +807,99 @@ async def ai_generate_question(category):
     return None
 
 
+# ═══════════════════════════════════════════════════════════
+# 🕵️ RIDDLE AI
+# ═══════════════════════════════════════════════════════════
+async def ai_generate_riddle(category, difficulty="متوسط"):
+    sys_prompt = (
+        "تو یک معمار معمای کارآگاهی حرفه‌ای هستی. معماهایی مثل شرلوک هلمز و پوآرو می‌سازی.\n"
+        "پاسخ فقط JSON با این ساختار:\n"
+        '{"title":"عنوان کوتاه جذاب","story":"داستان کارآگاهی ۴-۶ جمله","question":"سوال دقیق با یک جواب مشخص","answer":"جواب نهایی با توضیح کوتاه","hints":["راهنما ۱","راهنما ۲","راهنما ۳"]}\n'
+        "قوانین بسیار مهم:\n"
+        "- داستان باید شامل سرنخ‌های پنهان باشه که خواننده بتونه استنتاج کنه\n"
+        "- سوال باید فقط یک جواب قطعی داشته باشه\n"
+        "- جواب باید از داستان قابل استخراج باشه\n"
+        "- راهنماها از کلی به جزئی\n"
+        "- همه فارسی روان و مرموز و جذاب\n"
+        "- خروجی فقط JSON خالص، بدون توضیح اضافه"
+    )
+    user_prompt = f"یک معمای کارآگاهی سطح {difficulty} از دسته «{category}» بساز."
+    msgs = [{"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_prompt}]
+    for model in AI_MODELS:
+        for att in range(3):
+            try:
+                t = 0.9 if att == 0 else (1.05 if att == 1 else 1.2)
+                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model, 1200)
+                content = data["choices"][0]["message"]["content"].strip()
+                # پاکسازی JSON
+                content = re.sub(r"^```json\s*", "", content)
+                content = re.sub(r"\s*```$", "", content)
+                m = re.search(r'\{.*\}', content, re.DOTALL)
+                if m: content = m.group(0)
+                obj = json.loads(content)
+                if not all(k in obj for k in ("title", "story", "question", "answer", "hints")):
+                    raise ValueError("missing keys")
+                if not isinstance(obj["hints"], list): obj["hints"] = [str(obj["hints"])]
+                obj["title"] = str(obj["title"])[:120]
+                obj["story"] = str(obj["story"])[:1500]
+                obj["question"] = str(obj["question"])[:500]
+                obj["answer"] = str(obj["answer"])[:600]
+                obj["hints"] = [str(x)[:200] for x in obj["hints"][:3]]
+                logger.info(f"✅ Riddle: {obj['title'][:50]} via {model}")
+                return obj
+            except Exception as e:
+                logger.warning(f"riddle gen {model} t{att}: {e}")
+                await asyncio.sleep(0.4)
+    return None
+
+
+async def ai_analyze_riddle_answers(riddle, answers_list):
+    if not answers_list:
+        return {"analyses": [], "winner_idx": 0, "summary": "هیچ پاسخی ثبت نشد."}
+    answers_txt = "\n".join([f"[{a['idx']}] {a['name']}: {a['answer']}" for a in answers_list])
+    sys_prompt = (
+        "تو یک کارآگاه ارشد و تحلیل‌گر حرفه‌ای هستی.\n"
+        "پاسخ فقط JSON:\n"
+        '{"analyses":[{"idx":1,"verdict":"correct","score":10,"reason":"..."}],"winner_idx":1,"summary":"..."}\n'
+        "قوانین:\n"
+        "- verdict فقط یکی از: correct / close / wrong\n"
+        "- score: 0 تا 10 (10 برای correct، 3-7 برای close، 0-2 برای wrong)\n"
+        "- reason: ۱-۲ جمله فارسی با لحن کارآگاهی جذاب — بگو تا کجا درست گفتن و مشکلشون چی بود\n"
+        "- winner_idx: شماره idx کسی که بهترین پاسخ رو داد\n"
+        "- summary: یک پاراگراف جذاب درباره نتیجه نهایی بازی\n"
+        "- همه چیز فارسی، بدون تعارف خشک، حرفه‌ای"
+    )
+    user_prompt = (f"معما:\nعنوان: {riddle['title']}\n"
+                   f"داستان: {riddle['story']}\n"
+                   f"سوال: {riddle['question']}\n"
+                   f"جواب درست: {riddle['answer']}\n\n"
+                   f"پاسخ‌های بازیکنان:\n{answers_txt}\n\n"
+                   f"حالا همه رو تحلیل کن.")
+    msgs = [{"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_prompt}]
+    for model in AI_MODELS:
+        for att in range(2):
+            try:
+                t = 0.5 if att == 0 else 0.7
+                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model, 1800)
+                content = data["choices"][0]["message"]["content"].strip()
+                content = re.sub(r"^```json\s*", "", content)
+                content = re.sub(r"\s*```$", "", content)
+                m = re.search(r'\{.*\}', content, re.DOTALL)
+                if m: content = m.group(0)
+                obj = json.loads(content)
+                if "analyses" not in obj: raise ValueError("no analyses")
+                return obj
+            except Exception as e:
+                logger.warning(f"riddle analyze {model}: {e}")
+                await asyncio.sleep(0.4)
+    # fallback
+    return {"analyses": [{"idx": a["idx"], "verdict": "wrong", "score": 0,
+                          "reason": "تحلیل خودکار در دسترس نیست."} for a in answers_list],
+            "winner_idx": 0, "summary": "تحلیل نهایی ناموفق بود."}
+
+
 class DB:
     def __init__(self, dsn):
         self.conn = psycopg2.connect(dsn)
@@ -859,8 +907,7 @@ class DB:
         self._create(); self._migrate()
         logger.info("✅ PostgreSQL connected")
 
-    def _c(self):
-        return self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    def _c(self): return self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     def _create(self):
         c = self._c()
@@ -887,12 +934,10 @@ class DB:
         c = self._c()
         c.execute("SELECT column_name FROM information_schema.columns WHERE table_name='challenges'")
         cols = {r["column_name"] for r in c.fetchall()}
-        for col, ddl in [
-            ("ch_type", "ALTER TABLE challenges ADD COLUMN ch_type TEXT DEFAULT 'text'"),
-            ("options", "ALTER TABLE challenges ADD COLUMN options TEXT"),
-            ("deadline", "ALTER TABLE challenges ADD COLUMN deadline TEXT"),
-            ("results_announced", "ALTER TABLE challenges ADD COLUMN results_announced INTEGER DEFAULT 0"),
-        ]:
+        for col, ddl in [("ch_type", "ALTER TABLE challenges ADD COLUMN ch_type TEXT DEFAULT 'text'"),
+                         ("options", "ALTER TABLE challenges ADD COLUMN options TEXT"),
+                         ("deadline", "ALTER TABLE challenges ADD COLUMN deadline TEXT"),
+                         ("results_announced", "ALTER TABLE challenges ADD COLUMN results_announced INTEGER DEFAULT 0")]:
             if col not in cols:
                 try: self._c().execute(ddl)
                 except Exception: pass
@@ -1030,72 +1075,54 @@ else:
     client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
 _user_states = {}
-
-
-def set_state(uid, state, **data):
-    _user_states[uid] = {"state": state, "data": data}
-
-
-def get_state(uid):
-    return _user_states.get(uid)
-
-
-def clear_state(uid):
-    _user_states.pop(uid, None)
+def set_state(uid, state, **data): _user_states[uid] = {"state": state, "data": data}
+def get_state(uid): return _user_states.get(uid)
+def clear_state(uid): _user_states.pop(uid, None)
 
 
 async def send_admin_menu(event, edit=False):
-    text = (
-        f"{E('crown', '👑')} <b>UNICORN · ADMIN PANEL</b> {E('crown', '👑')}\n"
-        f"{DIV}\n\n"
-        f"{E('sparkle', '✨')} <b>سلام ادمین عزیز!</b> {E('wave', '👋')}\n"
-        f"{DIV2}\n\n"
-        f"{E('brain', '🧠')} <b>دستورات گروهی:</b>\n"
-        f"  {E('diamond', '💎')} <code>چالش</code> {E('point', '←')} کوییز هوشمند\n"
-        f"  {E('magic', '🎭')} <code>جرعت</code> {E('point', '←')} جرعت یا حقیقت\n"
-        f"  {E('chart', '📊')} <code>نظرسنجی: عنوان | گ1 | گ2</code>\n\n"
-        f"{DIV2}\n"
-        f"{E('star', '⭐')} <i>از دکمه‌های زیر استفاده کن</i> {E('point', '👇')}"
-    )
+    text = (f"{E('crown','👑')} <b>UNICORN · ADMIN PANEL</b> {E('crown','👑')}\n{DIV}\n\n"
+            f"{E('sparkle','✨')} <b>سلام ادمین عزیز!</b> {E('wave','👋')}\n{DIV2}\n\n"
+            f"{E('brain','🧠')} <b>دستورات گروهی:</b>\n"
+            f"  {E('diamond','💎')} <code>چالش</code> {E('point','←')} کوییز هوشمند\n"
+            f"  {E('magic','🎭')} <code>جرعت</code> {E('point','←')} جرعت یا حقیقت\n"
+            f"  {E('detective','🕵️')} <code>معما</code> {E('point','←')} معمای کارآگاهی\n"
+            f"  {E('chart','📊')} <code>نظرسنجی: عنوان | گ1 | گ2</code>\n\n"
+            f"{DIV2}\n{E('star','⭐')} <i>از دکمه‌ها استفاده کن</i> {E('point','👇')}")
     buttons = [
-        [Button.inline("💎 چالش متنی", data=b"new_text"),
-         Button.inline("📊 نظرسنجی", data=b"new_poll")],
+        [Button.inline("💎 چالش متنی", data=b"new_text"), Button.inline("📊 نظرسنجی", data=b"new_poll")],
         [Button.inline("🎁 قالب آماده", data=b"templates")],
         [Button.inline("📋 چالش‌های من", data=b"my_challenges")],
-        [Button.inline("🏢 گروه‌ها", data=b"my_groups"),
-         Button.inline("🏆 لیدربورد", data=b"top")],
-        [Button.inline("💌 لینک NGL", data=b"mylink"),
-         Button.inline("📊 آمار", data=b"stats")],
-        [Button.inline("📥 صندوق ناشناس", data=b"anon_inbox"),
-         Button.inline("📤 برادکست", data=b"broadcast")],
+        [Button.inline("🏢 گروه‌ها", data=b"my_groups"), Button.inline("🏆 لیدربورد", data=b"top")],
+        [Button.inline("💌 لینک NGL", data=b"mylink"), Button.inline("📊 آمار", data=b"stats")],
+        [Button.inline("📥 صندوق ناشناس", data=b"anon_inbox"), Button.inline("📤 برادکست", data=b"broadcast")],
     ]
-    if edit:
-        await safe_edit(event, text, buttons=buttons, parse_mode="html")
-    else:
-        await safe_respond(event, text, buttons=buttons, parse_mode="html")
+    if edit: await safe_edit(event, text, buttons=buttons, parse_mode="html")
+    else: await safe_respond(event, text, buttons=buttons, parse_mode="html")
 
 
 def build_challenge_text(cid, title, question, ch_type, options, deadline):
     if ch_type == "poll":
-        opts = "\n".join([f"  {E('point', '👉')} <b>{i+1}.</b> {h(o)}"
-                          for i, o in enumerate(options or [])])
-        body = (f"{E('chart', '📊')} <b>نظرسنجی ناشناس</b>\n{DIV}\n\n"
-                f"{E('tag', '🏷️')} <b>عنوان:</b> {h(title)}\n\n"
-                f"{E('list', '📋')} <b>گزینه‌ها:</b>\n{opts}\n\n")
+        opts = "\n".join([f"  {E('point','👉')} <b>{i+1}.</b> {h(o)}" for i, o in enumerate(options or [])])
+        body = (f"{E('chart','📊')} <b>نظرسنجی ناشناس</b>\n{DIV}\n\n"
+                f"{E('tag','🏷️')} <b>عنوان:</b> {h(title)}\n\n"
+                f"{E('list','📋')} <b>گزینه‌ها:</b>\n{opts}\n\n")
     else:
-        body = (f"{E('diamond', '💎')} <b>چالش ناشناس</b>\n{DIV}\n\n"
-                f"{E('tag', '🏷️')} <b>عنوان:</b> {h(title)}\n\n"
-                f"{E('message', '💬')} <b>سوال:</b> {h(question)}\n\n")
-    extra = (f"{E('shield', '🛡')} <i>پاسخ‌ها کاملاً ناشناس</i>\n"
-             f"{E('lock', '🔒')} <i>هیچ‌کس نمی‌فهمه کی جواب داده</i>\n")
+        body = (f"{E('diamond','💎')} <b>چالش ناشناس</b>\n{DIV}\n\n"
+                f"{E('tag','🏷️')} <b>عنوان:</b> {h(title)}\n\n"
+                f"{E('message','💬')} <b>سوال:</b> {h(question)}\n\n")
+    extra = (f"{E('shield','🛡')} <i>پاسخ‌ها کاملاً ناشناس</i>\n"
+             f"{E('lock','🔒')} <i>هیچ‌کس نمی‌فهمه کی جواب داده</i>\n")
     if deadline:
-        try:
-            extra += f"{E('hourglass', '⏳')} <b>مهلت:</b> {datetime.fromisoformat(deadline).strftime('%Y/%m/%d - %H:%M')}\n"
+        try: extra += f"{E('hourglass','⏳')} <b>مهلت:</b> {datetime.fromisoformat(deadline).strftime('%Y/%m/%d - %H:%M')}\n"
         except Exception: pass
-    extra += f"\n{E('rocket', '🚀')} <b>برای شرکت روی دکمه بزن:</b>"
+    extra += f"\n{E('rocket','🚀')} <b>برای شرکت روی دکمه بزن:</b>"
     return body + extra
 
 
+# ═══════════════════════════════════════════════════════════
+# 🧠 QUIZ
+# ═══════════════════════════════════════════════════════════
 def create_setup_game(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
          "admin_id": aid, "group_id": gid, "categories": [],
@@ -1103,8 +1130,7 @@ def create_setup_game(aid, gid):
          "players": {}, "order": [], "state": "setup", "current_index": 0,
          "current_player": None, "current_state": None, "current_question": None,
          "join_msg_id": None, "turn_msg_id": None, "timeout_task": None}
-    SETUP_GAMES[aid] = g
-    return g
+    SETUP_GAMES[aid] = g; return g
 
 
 def _find_game_for_callback(event):
@@ -1112,8 +1138,7 @@ def _find_game_for_callback(event):
         mid = getattr(event, "message_id", None)
         if mid:
             for g in ACTIVE_GAMES.values():
-                if g.get("join_msg_id") == mid or g.get("turn_msg_id") == mid:
-                    return g
+                if g.get("join_msg_id") == mid or g.get("turn_msg_id") == mid: return g
                 cq = g.get("current_question")
                 if cq and cq.get("msg_id") == mid: return g
     except Exception: pass
@@ -1129,37 +1154,32 @@ def _find_game_for_callback(event):
 
 
 def render_quiz_welcome(g):
-    return (
-        f"{E('brain', '🧠')} <b>کوییز هوشمند UNICORN</b> {E('brain', '🧠')}\n"
-        f"{DIV}\n\n"
-        f"{E('sparkle', '✨')} <b>سلام ادمین عزیز!</b> {E('wave', '👋')}\n\n"
-        f"{E('info', 'ℹ️')} <b>جریان بازی:</b>\n"
-        f"  {E('gamepad', '🎮')} بازیکنان توی گروه عضو می‌شن\n"
-        f"  {E('target', '🎯')} نوبتی توی گروه دسته انتخاب می‌کنن\n"
-        f"  {E('brain', '🧠')} هوش مصنوعی سوال می‌سازه\n"
-        f"  {E('hourglass', '⏳')} تایمر زنده هر ثانیه\n"
-        f"  {E('bolt', '⚡')} درست <b>+1</b> و غلط <b>-1</b>\n\n"
-        f"{E('magic', '✨')} <i>آماده‌ای؟</i>",
-        [[Button.inline("🚀 شروع تنظیمات", data=b"quiz_setup")],
-         [Button.inline("❌ لغو", data=b"quiz_cancel")]]
-    )
+    return (f"{E('brain','🧠')} <b>کوییز هوشمند UNICORN</b> {E('brain','🧠')}\n{DIV}\n\n"
+            f"{E('sparkle','✨')} <b>سلام ادمین عزیز!</b> {E('wave','👋')}\n\n"
+            f"{E('info','ℹ️')} <b>جریان بازی:</b>\n"
+            f"  {E('gamepad','🎮')} بازیکنان توی گروه عضو می‌شن\n"
+            f"  {E('target','🎯')} نوبتی توی گروه دسته انتخاب می‌کنن\n"
+            f"  {E('brain','🧠')} هوش مصنوعی سوال می‌سازه\n"
+            f"  {E('hourglass','⏳')} تایمر زنده هر ثانیه\n"
+            f"  {E('bolt','⚡')} درست <b>+1</b> و غلط <b>-1</b>\n\n"
+            f"{E('magic','✨')} <i>آماده‌ای؟</i>",
+            [[Button.inline("🚀 شروع تنظیمات", data=b"quiz_setup")],
+             [Button.inline("❌ لغو", data=b"quiz_cancel")]])
 
 
 def render_categories_menu(g):
     sel = g["categories"]
-    text = (f"{E('target', '🎯')} <b>مرحله ۱ از ۳ — دسته‌بندی</b>\n{DIV}\n\n"
-            f"{E('info', 'ℹ️')} هر تعداد که می‌خوای انتخاب کن:\n\n"
-            f"{E('list', '📋')} <b>انتخاب شده ({len(sel)}):</b>\n")
+    text = (f"{E('target','🎯')} <b>مرحله ۱ از ۳ — دسته‌بندی</b>\n{DIV}\n\n"
+            f"{E('info','ℹ️')} هر تعداد که می‌خوای انتخاب کن:\n\n"
+            f"{E('list','📋')} <b>انتخاب شده ({len(sel)}):</b>\n")
     if sel:
-        for c in sel: text += f"  {E('check', '✅')} <b>{c}</b>\n"
-    else:
-        text += f"  {E('cross', '➖')} <i>هنوز چیزی انتخاب نکردی</i>\n"
+        for c in sel: text += f"  {E('check','✅')} <b>{c}</b>\n"
+    else: text += f"  {E('cross','➖')} <i>هنوز چیزی انتخاب نکردی</i>\n"
     btns, row = [], []
     for i, (k, e, n) in enumerate(QUIZ_CATEGORIES):
         mark = "✅" if n in sel else "◽"
         row.append(Button.inline(f"{mark} {e} {n}", data=f"quiz_cat:{i}".encode()))
-        if len(row) == 2:
-            btns.append(row); row = []
+        if len(row) == 2: btns.append(row); row = []
     if row: btns.append(row)
     if sel: btns.append([Button.inline("➡️ ادامه", data=b"quiz_settings")])
     else: btns.append([Button.inline("⛔ حداقل یکی", data=b"quiz_noop")])
@@ -1169,43 +1189,37 @@ def render_categories_menu(g):
 
 def render_settings_menu(g):
     q, t, s = g["questions_per_player"], g["time_per_question"], g["target_score"]
-    qb = [Button.inline(("✅ " if n == q else "◽ ") + str(n), data=f"quiz_q:{n}".encode())
-          for n in QUIZ_Q_OPTIONS]
-    tb = [Button.inline(("✅ " if n == t else "◽ ") + f"{n}s", data=f"quiz_t:{n}".encode())
-          for n in QUIZ_TIME_OPTIONS]
+    qb = [Button.inline(("✅ " if n == q else "◽ ") + str(n), data=f"quiz_q:{n}".encode()) for n in QUIZ_Q_OPTIONS]
+    tb = [Button.inline(("✅ " if n == t else "◽ ") + f"{n}s", data=f"quiz_t:{n}".encode()) for n in QUIZ_TIME_OPTIONS]
     sb = [Button.inline(("✅ " if n == s else "◽ ") + ("♾" if n == 0 else str(n)),
                         data=f"quiz_s:{n}".encode()) for n in QUIZ_TARGET_OPTIONS]
-    text = (f"{E('gamepad', '🎮')} <b>مرحله ۲ از ۳ — تنظیمات</b>\n{DIV}\n\n"
-            f"{E('chart', '📊')} <b>سوال هر نفر:</b> <code>{q}</code>\n"
-            f"{E('hourglass', '⏳')} <b>زمان هر سوال:</b> <code>{t}</code> ثانیه\n"
-            f"{E('trophy', '🏆')} <b>امتیاز هدف:</b> "
+    text = (f"{E('gamepad','🎮')} <b>مرحله ۲ از ۳ — تنظیمات</b>\n{DIV}\n\n"
+            f"{E('chart','📊')} <b>سوال هر نفر:</b> <code>{q}</code>\n"
+            f"{E('hourglass','⏳')} <b>زمان هر سوال:</b> <code>{t}</code> ثانیه\n"
+            f"{E('trophy','🏆')} <b>امتیاز هدف:</b> "
             f"{'<i>بدون هدف</i>' if s == 0 else f'<code>{s}</code>'}\n\n"
-            f"{E('info', 'ℹ️')} <i>با دکمه‌ها تنظیم کن</i>")
+            f"{E('info','ℹ️')} <i>با دکمه‌ها تنظیم کن</i>")
     return text, [
         [Button.inline("— 📊 تعداد سوال —", data=b"quiz_noop")], qb,
         [Button.inline("— ⏳ زمان هر سوال —", data=b"quiz_noop")], tb,
         [Button.inline("— 🏆 امتیاز هدف —", data=b"quiz_noop")], sb,
-        [Button.inline("⬅️ قبلی", data=b"quiz_backcat"),
-         Button.inline("➡️ ادامه", data=b"quiz_summary")],
-        [Button.inline("❌ لغو", data=b"quiz_cancel")],
-    ]
+        [Button.inline("⬅️ قبلی", data=b"quiz_backcat"), Button.inline("➡️ ادامه", data=b"quiz_summary")],
+        [Button.inline("❌ لغو", data=b"quiz_cancel")]]
 
 
 def render_summary_menu(g):
     cats = "، ".join(g["categories"])
     tt = "بدون هدف" if g["target_score"] == 0 else f"{g['target_score']} امتیاز"
-    text = (f"{E('check', '✅')} <b>مرحله ۳ از ۳ — خلاصه</b>\n{DIV}\n\n"
-            f"{E('brain', '🧠')} <b>کوییز هوشمند UNICORN</b>\n\n"
-            f"{E('list', '📋')} <b>دسته‌ها:</b> {h(cats)}\n"
-            f"{E('chart', '📊')} <b>سوال هر نفر:</b> <code>{g['questions_per_player']}</code>\n"
-            f"{E('hourglass', '⏳')} <b>زمان هر سوال:</b> <code>{g['time_per_question']}</code> ثانیه\n"
-            f"{E('trophy', '🏆')} <b>امتیاز هدف:</b> <code>{tt}</code>\n\n"
-            f"{E('info', 'ℹ️')} <i>بعد از تأیید، پیام شرکت توی گروه فرستاده می‌شه</i>")
-    return text, [
-        [Button.inline("🚀 ایجاد بازی در گروه", data=b"quiz_create")],
-        [Button.inline("⬅️ قبلی", data=b"quiz_settings")],
-        [Button.inline("❌ لغو", data=b"quiz_cancel")],
-    ]
+    text = (f"{E('check','✅')} <b>مرحله ۳ از ۳ — خلاصه</b>\n{DIV}\n\n"
+            f"{E('brain','🧠')} <b>کوییز هوشمند UNICORN</b>\n\n"
+            f"{E('list','📋')} <b>دسته‌ها:</b> {h(cats)}\n"
+            f"{E('chart','📊')} <b>سوال هر نفر:</b> <code>{g['questions_per_player']}</code>\n"
+            f"{E('hourglass','⏳')} <b>زمان هر سوال:</b> <code>{g['time_per_question']}</code> ثانیه\n"
+            f"{E('trophy','🏆')} <b>امتیاز هدف:</b> <code>{tt}</code>\n\n"
+            f"{E('info','ℹ️')} <i>بعد از تأیید، پیام شرکت توی گروه فرستاده می‌شه</i>")
+    return text, [[Button.inline("🚀 ایجاد بازی در گروه", data=b"quiz_create")],
+                  [Button.inline("⬅️ قبلی", data=b"quiz_settings")],
+                  [Button.inline("❌ لغو", data=b"quiz_cancel")]]
 
 
 async def quiz_send_setup_menu(aid, screen="welcome", game=None):
@@ -1217,40 +1231,30 @@ async def quiz_send_setup_menu(aid, screen="welcome", game=None):
     elif screen == "summary": text, b = render_summary_menu(game)
     else: return
     try: await safe_send(aid, text, buttons=b, parse_mode="html")
-    except Exception as e: logger.exception(f"quiz_send_setup_menu: {e}")
+    except Exception as e: logger.exception(f"quiz menu: {e}")
 
 
 def _render_join_text(g):
-    pl = list(g["players"].values())
-    c = len(pl)
-    if c == 0:
-        nb = f"     {E('cross', '➖')} <i>هنوز کسی شرکت نکرده</i>"
+    pl = list(g["players"].values()); c = len(pl)
+    if c == 0: nb = f"     {E('cross','➖')} <i>هنوز کسی نیست</i>"
     else:
-        re_ = ["🥇", "🥈", "🥉"]
-        lines = []
+        re_ = ["🥇", "🥈", "🥉"]; lines = []
         for i, p in enumerate(pl):
             r = re_[i] if i < 3 else f"<b>{i+1:02d}.</b>"
             u = f"  <i>@{p['username']}</i>" if p.get("username") else ""
-            lines.append(f"  {r} {E('check', '✅')} <b>{h(p['name'])}</b>{u}")
+            lines.append(f"  {r} {E('check','✅')} <b>{h(p['name'])}</b>{u}")
         nb = "\n".join(lines)
     cats = "، ".join(g["categories"])
     tt = "بدون هدف" if g["target_score"] == 0 else f"{g['target_score']} امتیاز"
-    text = (
-        f"{E('brain', '🧠')} <b>UNICORN QUIZ · PRO</b> {E('brain', '🧠')}\n"
-        f"{DIV}\n\n"
-        f"{E('party', '🎉')} <b>یه کوییز حرفه‌ای با هوش مصنوعی!</b>\n"
-        f"{DIV2}\n\n"
-        f"{E('list', '📋')} <b>دسته‌ها:</b>  {h(cats)}\n"
-        f"{E('chart', '📊')} <b>سوال هر نفر:</b>  <code>{g['questions_per_player']}</code>\n"
-        f"{E('hourglass', '⏳')} <b>زمان هر سوال:</b>  <code>{g['time_per_question']}</code> ثانیه\n"
-        f"{E('trophy', '🏆')} <b>هدف:</b>  <code>{tt}</code>\n"
-        f"{E('bolt', '⚡')} درست <b>+1</b>  ·  غلط <b>-1</b>\n"
-        f"{DIV}\n"
-        f"{E('crown', '👑')} <b>شرکت‌کنندگان ({c}):</b>\n"
-        f"{nb}\n"
-        f"{DIV}\n\n"
-        f"{E('target', '🎯')} <b>برای شرکت، روی دکمه بزن</b> {E('point', '👇')}"
-    )
+    text = (f"{E('brain','🧠')} <b>UNICORN QUIZ · PRO</b> {E('brain','🧠')}\n{DIV}\n\n"
+            f"{E('party','🎉')} <b>یه کوییز حرفه‌ای با هوش مصنوعی!</b>\n{DIV2}\n\n"
+            f"{E('list','📋')} <b>دسته‌ها:</b>  {h(cats)}\n"
+            f"{E('chart','📊')} <b>سوال هر نفر:</b>  <code>{g['questions_per_player']}</code>\n"
+            f"{E('hourglass','⏳')} <b>زمان هر سوال:</b>  <code>{g['time_per_question']}</code> ثانیه\n"
+            f"{E('trophy','🏆')} <b>هدف:</b>  <code>{tt}</code>\n"
+            f"{E('bolt','⚡')} درست <b>+1</b>  ·  غلط <b>-1</b>\n{DIV}\n"
+            f"{E('crown','👑')} <b>شرکت‌کنندگان ({c}):</b>\n{nb}\n{DIV}\n\n"
+            f"{E('target','🎯')} <b>برای شرکت، روی دکمه بزن</b> {E('point','👇')}")
     jb = f"✋ شرکت می‌کنم  ·  ({c})" if c > 0 else "✋ شرکت می‌کنم"
     return text, [[Button.inline(jb, data=b"quiz_join")],
                   [Button.inline("▶️ شروع بازی (ادمین)", data=b"quiz_start")]]
@@ -1261,7 +1265,7 @@ async def quiz_broadcast_join(g):
     try:
         sent = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
         if sent: g["join_msg_id"] = sent.id
-    except Exception as e: logger.exception(f"quiz_broadcast_join: {e}")
+    except Exception as e: logger.exception(f"quiz bcast: {e}")
 
 
 async def quiz_refresh_join(g):
@@ -1276,8 +1280,7 @@ async def quiz_refresh_join(g):
     try:
         msg = await client.get_messages(g["group_id"], ids=mid)
         if msg:
-            await msg.edit(text=text, buttons=btns, parse_mode="html")
-            return
+            await msg.edit(text=text, buttons=btns, parse_mode="html"); return
     except Exception as e: logger.warning(f"refresh m2: {e}")
     try:
         new = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
@@ -1290,48 +1293,40 @@ async def quiz_refresh_join(g):
 
 async def quiz_start_game(g):
     g["state"] = "playing"
-    g["order"] = list(g["players"].keys())
-    g["current_index"] = 0
-    pl = "\n".join([f"  {E('point', '👉')} <b>{h(p['name'])}</b>" for p in g["players"].values()])
+    g["order"] = list(g["players"].keys()); g["current_index"] = 0
+    pl = "\n".join([f"  {E('point','👉')} <b>{h(p['name'])}</b>" for p in g["players"].values()])
     await safe_send(g["group_id"],
-                    f"{E('party', '🎉')} <b>بازی شروع شد!</b> {E('party', '🎉')}\n{DIV}\n\n"
-                    f"{E('user', '👤')} <b>بازیکنان ({len(g['order'])}):</b>\n{pl}\n\n"
-                    f"{E('rocket', '🚀')} <b>آماده باشید...</b>", parse_mode="html")
-    await asyncio.sleep(2)
-    await quiz_next_turn(g)
+                    f"{E('party','🎉')} <b>بازی شروع شد!</b> {E('party','🎉')}\n{DIV}\n\n"
+                    f"{E('user','👤')} <b>بازیکنان ({len(g['order'])}):</b>\n{pl}\n\n"
+                    f"{E('rocket','🚀')} <b>آماده باشید...</b>", parse_mode="html")
+    await asyncio.sleep(2); await quiz_next_turn(g)
 
 
 async def quiz_next_turn(g):
     if g["state"] != "playing": return
-    if not g["order"]:
-        await quiz_finish(g); return
+    if not g["order"]: await quiz_finish(g); return
     n = len(g["order"])
-    if all(g["players"][uid]["asked"] >= g["questions_per_player"] for uid in g["order"]):
+    if all(g["players"][u]["asked"] >= g["questions_per_player"] for u in g["order"]):
         await quiz_finish(g); return
     tries = 0
     while tries < n:
         idx = g["current_index"] % n
         uid = g["order"][idx]
-        if g["players"][uid]["asked"] < g["questions_per_player"]:
-            break
+        if g["players"][uid]["asked"] < g["questions_per_player"]: break
         g["current_index"] += 1; tries += 1
-    else:
-        await quiz_finish(g); return
-    uid = g["order"][g["current_index"] % n]
-    p = g["players"][uid]
-    g["current_player"] = uid
-    g["current_state"] = "picking_category"
-    g["current_question"] = None
+    else: await quiz_finish(g); return
+    uid = g["order"][g["current_index"] % n]; p = g["players"][uid]
+    g["current_player"] = uid; g["current_state"] = "picking_category"; g["current_question"] = None
     if g.get("turn_msg_id"):
         try: await client.delete_messages(g["group_id"], g["turn_msg_id"])
         except Exception: pass
     cb = quiz_category_buttons(g)
     cb.append([Button.inline("⏭ رد کردن نوبت (ادمین)", data=b"quiz_skip_turn")])
-    text = (f"{E('target', '🎯')} <b>نوبت {h(p['name'])}</b>\n{DIV}\n\n"
-            f"{E('chart', '📊')} سوال <code>{p['asked']+1}/{g['questions_per_player']}</code>\n"
-            f"{E('star', '⭐')} امتیاز: <code>{p['score']}</code>\n\n"
-            f"{E('brain', '🧠')} <b>{h(p['name'])}</b> یه دسته انتخاب کن:\n"
-            f"{E('info', 'ℹ️')} <i>فقط خودت می‌تونی کلیک کنی</i>")
+    text = (f"{E('target','🎯')} <b>نوبت {h(p['name'])}</b>\n{DIV}\n\n"
+            f"{E('chart','📊')} سوال <code>{p['asked']+1}/{g['questions_per_player']}</code>\n"
+            f"{E('star','⭐')} امتیاز: <code>{p['score']}</code>\n\n"
+            f"{E('brain','🧠')} <b>{h(p['name'])}</b> یه دسته انتخاب کن:\n"
+            f"{E('info','ℹ️')} <i>فقط خودت می‌تونی کلیک کنی</i>")
     sent = await safe_send(g["group_id"], text, buttons=cb, parse_mode="html")
     if sent: g["turn_msg_id"] = sent.id
 
@@ -1341,61 +1336,43 @@ def quiz_category_buttons(g):
     for i, (k, e, n) in enumerate(QUIZ_CATEGORIES):
         if n not in g["categories"]: continue
         row.append(Button.inline(f"{e} {n}", data=f"quiz_pick:{i}".encode()))
-        if len(row) == 2:
-            btns.append(row); row = []
+        if len(row) == 2: btns.append(row); row = []
     if row: btns.append(row)
     return btns
 
 
 async def quiz_ask_question(g, uid, ci):
-    k, e, cn = QUIZ_CATEGORIES[ci]
-    gid = g["group_id"]
+    k, e, cn = QUIZ_CATEGORIES[ci]; gid = g["group_id"]
     if g.get("turn_msg_id"):
-        try:
-            await client.delete_messages(gid, g["turn_msg_id"]); g["turn_msg_id"] = None
+        try: await client.delete_messages(gid, g["turn_msg_id"]); g["turn_msg_id"] = None
         except Exception: pass
-    wm = await safe_send(gid,
-                         f"{E('brain', '🧠')} <b>AI در حال ساخت سوال...</b>\n"
-                         f"{DIV}\n\n"
-                         f"{e} دسته: <b>{h(cn)}</b>\n"
-                         f"{E('bolt', '⚡')} <i>چند لحظه صبر کن...</i>",
+    wm = await safe_send(gid, f"{E('brain','🧠')} <b>AI در حال ساخت سوال...</b>\n{DIV}\n\n"
+                             f"{e} دسته: <b>{h(cn)}</b>\n{E('bolt','⚡')} <i>چند لحظه...</i>",
                          parse_mode="html")
     q = await ai_generate_question(cn)
     if not q:
         try: await wm.delete()
         except Exception: pass
-        await safe_send(gid, f"{E('cross', '❌')} <b>خطا در ساخت سوال</b>\n"
-                             f"{E('info', 'ℹ️')} نوبت می‌چرخه...", parse_mode="html")
-        await asyncio.sleep(2)
-        g["current_index"] += 1
-        await quiz_next_turn(g); return
+        await safe_send(gid, f"{E('cross','❌')} <b>خطا در ساخت سوال</b>\n"
+                             f"{E('info','ℹ️')} نوبت می‌چرخه...", parse_mode="html")
+        await asyncio.sleep(2); g["current_index"] += 1; await quiz_next_turn(g); return
     p = g["players"][uid]
-    g["current_question"] = {
-        "player": uid, "question": q["question"], "options": q["options"],
-        "correct": q["correct"], "category": cn, "category_emoji": e,
-        "answered": False, "msg_id": None, "total_time": g["time_per_question"],
-    }
-    g["current_state"] = "answering"
-    p["asked"] += 1
+    g["current_question"] = {"player": uid, "question": q["question"], "options": q["options"],
+                              "correct": q["correct"], "category": cn, "category_emoji": e,
+                              "answered": False, "msg_id": None, "total_time": g["time_per_question"]}
+    g["current_state"] = "answering"; p["asked"] += 1
     labels = ["۱", "۲", "۳", "۴"]
     btns = [[Button.inline(f"{labels[i]}. {opt[:60]}", data=f"quiz_ans:{i}".encode())]
             for i, opt in enumerate(q["options"])]
     btns.append([Button.inline("⏭ رد کردن نوبت (ادمین)", data=b"quiz_skip_turn")])
     total = g["time_per_question"]
-    bar = time_bar_colored(total, total)
-    tb = time_badge(total, total)
-    text = (
-        f"{E('target', '🎯')} {e} <b>سوال {h(cn)}</b> — نوبت <b>{h(p['name'])}</b> {E('sparkle', '✨')}\n"
-        f"{DIV}\n\n"
-        f"{E('brain', '🧠')} <b><blockquote>{h(q['question'])}</blockquote></b>\n\n"
-        f"{DIV2}\n"
-        f"{tb} <b>زمان:</b> <code>{total}</code> ثانیه\n"
-        f"{bar}  <b>100%</b>\n"
-        f"{E('bolt', '⚡')} درست <b>+1</b> | غلط <b>-1</b>\n"
-        f"{E('star', '⭐')} امتیاز فعلی: <code>{p['score']}</code>\n"
-        f"{DIV}\n\n"
-        f"{E('target', '🎯')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:"
-    )
+    bar = time_bar_colored(total, total); tb = time_badge(total, total)
+    text = (f"{E('target','🎯')} {e} <b>سوال {h(cn)}</b> — نوبت <b>{h(p['name'])}</b> {E('sparkle','✨')}\n"
+            f"{DIV}\n\n{E('brain','🧠')} <b><blockquote>{h(q['question'])}</blockquote></b>\n\n"
+            f"{DIV2}\n{tb} <b>زمان:</b> <code>{total}</code> ثانیه\n{bar}  <b>100%</b>\n"
+            f"{E('bolt','⚡')} درست <b>+1</b> | غلط <b>-1</b>\n"
+            f"{E('star','⭐')} امتیاز: <code>{p['score']}</code>\n{DIV}\n\n"
+            f"{E('target','🎯')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:")
     try: await wm.delete()
     except Exception: pass
     sent = await safe_send(gid, text, buttons=btns, parse_mode="html")
@@ -1407,10 +1384,8 @@ async def quiz_ask_question(g, uid, ci):
 
 
 async def quiz_live_countdown(g, uid, total):
-    logger.info(f"⏱ countdown {total}s uid={uid}")
     try:
-        gid = g["group_id"]
-        last_shown = None
+        gid = g["group_id"]; last_shown = None
         for remaining in range(total, -1, -1):
             cq = g.get("current_question")
             if not cq or cq.get("answered") or cq.get("player") != uid: return
@@ -1418,29 +1393,24 @@ async def quiz_live_countdown(g, uid, total):
             if not p: return
             if cq.get("msg_id") is None:
                 await asyncio.sleep(0.5); continue
-            bar = time_bar_colored(remaining, total)
-            tb = time_badge(remaining, total)
+            bar = time_bar_colored(remaining, total); tb = time_badge(remaining, total)
             pct = int(100 * remaining / total) if total > 0 else 0
             if remaining <= 3 and remaining > 0:
-                tw = f"{E('alert', '🚨')} <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
+                tw = f"{E('alert','🚨')} <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
             elif remaining == 0:
-                tw = f"{E('hourglass', '⏰')} <b>وقت تموم شد!</b>"
+                tw = f"{E('hourglass','⏰')} <b>وقت تموم شد!</b>"
             else:
                 tw = f"{tb} <b>زمان:</b> <code>{remaining}</code> ثانیه"
             labels = ["۱", "۲", "۳", "۴"]
             btns = [[Button.inline(f"{labels[i]}. {opt[:60]}", data=f"quiz_ans:{i}".encode())]
                     for i, opt in enumerate(cq["options"])]
             btns.append([Button.inline("⏭ رد کردن نوبت (ادمین)", data=b"quiz_skip_turn")])
-            text = (
-                f"{E('target', '🎯')} {cq['category_emoji']} <b>سوال {h(cq['category'])}</b> — نوبت <b>{h(p['name'])}</b> {E('sparkle', '✨')}\n"
-                f"{DIV}\n\n"
-                f"{E('brain', '🧠')} <b><blockquote>{h(cq['question'])}</blockquote></b>\n\n"
-                f"{DIV2}\n{tw}\n{bar}  <b>{pct}%</b>\n"
-                f"{E('bolt', '⚡')} درست <b>+1</b> | غلط <b>-1</b>\n"
-                f"{E('star', '⭐')} امتیاز فعلی: <code>{p['score']}</code>\n"
-                f"{DIV}\n\n"
-                f"{E('target', '🎯')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:"
-            )
+            text = (f"{E('target','🎯')} {cq['category_emoji']} <b>سوال {h(cq['category'])}</b> — نوبت <b>{h(p['name'])}</b> {E('sparkle','✨')}\n"
+                    f"{DIV}\n\n{E('brain','🧠')} <b><blockquote>{h(cq['question'])}</blockquote></b>\n\n"
+                    f"{DIV2}\n{tw}\n{bar}  <b>{pct}%</b>\n"
+                    f"{E('bolt','⚡')} درست <b>+1</b> | غلط <b>-1</b>\n"
+                    f"{E('star','⭐')} امتیاز: <code>{p['score']}</code>\n{DIV}\n\n"
+                    f"{E('target','🎯')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:")
             if text != last_shown:
                 ok = await safe_edit_msg(gid, cq["msg_id"], text, buttons=btns)
                 if ok: last_shown = text
@@ -1456,36 +1426,29 @@ async def quiz_live_countdown(g, uid, total):
 async def quiz_handle_timeout(g, uid):
     cq = g.get("current_question")
     if not cq or cq.get("answered"): return
-    cq["answered"] = True
-    p = g["players"].get(uid)
+    cq["answered"] = True; p = g["players"].get(uid)
     if not p: return
-    p["score"] -= 1
-    ct = cq["options"][cq["correct"]]
-    labels = ["۱", "۲", "۳", "۴"]
-    btns = []
+    p["score"] -= 1; ct = cq["options"][cq["correct"]]
+    labels = ["۱", "۲", "۳", "۴"]; btns = []
     for i, opt in enumerate(cq["options"]):
-        if i == cq["correct"]:
-            btns.append([Button.inline(f"✅ {labels[i]}. {opt[:58]}", data=b"quiz_noop")])
-        else:
-            btns.append([Button.inline(f"❌ {labels[i]}. {opt[:58]}", data=b"quiz_noop")])
+        if i == cq["correct"]: btns.append([Button.inline(f"✅ {labels[i]}. {opt[:58]}", data=b"quiz_noop")])
+        else: btns.append([Button.inline(f"❌ {labels[i]}. {opt[:58]}", data=b"quiz_noop")])
     if cq.get("msg_id"):
         await safe_edit_msg(g["group_id"], cq["msg_id"],
-            text=(f"{E('hourglass', '⏰')} <b>وقت تموم شد!</b>\n{DIV}\n\n"
-                  f"{E('user', '👤')} <b>{h(p['name'])}</b> نتونست جواب بده\n\n"
-                  f"{E('check', '✅')} <b>جواب درست:</b>\n     <b>{h(ct)}</b>\n\n"
-                  f"{E('bolt', '⚡')} امتیاز: <code>-1</code>\n"
-                  f"{E('star', '⭐')} امتیاز فعلی: <code>{p['score']}</code>"),
-            buttons=btns)
+            text=(f"{E('hourglass','⏰')} <b>وقت تموم شد!</b>\n{DIV}\n\n"
+                  f"{E('user','👤')} <b>{h(p['name'])}</b> نتونست جواب بده\n\n"
+                  f"{E('check','✅')} <b>جواب درست:</b>\n     <b>{h(ct)}</b>\n\n"
+                  f"{E('bolt','⚡')} امتیاز: <code>-1</code>\n"
+                  f"{E('star','⭐')} امتیاز فعلی: <code>{p['score']}</code>"), buttons=btns)
     await asyncio.sleep(2.5)
     if await quiz_check_target(g): return
-    g["current_index"] += 1
-    await quiz_next_turn(g)
+    g["current_index"] += 1; await quiz_next_turn(g)
 
 
 def _bb(options, correct, pick=None):
     labels = ["۱", "۲", "۳", "۴"]
-    return [[Button.inline(f"{'✅' if i == correct else '❌'} {labels[i]}. {opt[:58]}",
-                            data=b"quiz_noop")] for i, opt in enumerate(options)]
+    return [[Button.inline(f"{'✅' if i == correct else '❌'} {labels[i]}. {opt[:58]}", data=b"quiz_noop")]
+            for i, opt in enumerate(options)]
 
 
 async def quiz_check_target(g):
@@ -1504,47 +1467,33 @@ async def quiz_answer(g, uid, ai):
     if g.get("timeout_task"):
         try: g["timeout_task"].cancel()
         except Exception: pass
-    p = g["players"][uid]
-    correct = cq["correct"]
-    ok = (ai == correct)
-    ct = cq["options"][correct]
-    ch = cq["options"][ai]
+    p = g["players"][uid]; correct = cq["correct"]; ok = (ai == correct)
+    ct = cq["options"][correct]; ch = cq["options"][ai]
     btns = _bb(cq["options"], correct, pick=ai)
     if ok:
         p["score"] += 1
-        text = (
-            f"{E('party', '🎉')}🎊 <b>H O O R A ! ! !</b> 🎊{E('party', '🎉')}\n"
-            f"{DIV}\n\n"
-            f"{E('sparkle', '✨')} <b>{h(p['name'])} عزیز، درست زدی!</b> {E('sparkle', '✨')}\n"
-            f"{DIV2}\n\n"
-            f"{E('check', '✅')} <b>انتخاب تو:</b>  <code>{h(ch)}</code>\n"
-            f"{E('check', '✅')} <b>جواب صحیح:</b>  <code>{h(ct)}</code>\n\n"
-            f"{E('fire', '🔥')} <b>آفرین! فوق‌العاده بود!</b>\n"
-            f"{E('bolt', '⚡')} امتیاز:  <code>+1</code>\n"
-            f"{E('star', '⭐')} امتیاز کل:  <code>{p['score']}</code>\n"
-            f"{DIV}\n"
-            f"{E('rocket', '🚀')} <i>همینطوری ادامه بده قهرمان!</i>"
-        )
+        text = (f"{E('party','🎉')}🎊 <b>H O O R A ! ! !</b> 🎊{E('party','🎉')}\n{DIV}\n\n"
+                f"{E('sparkle','✨')} <b>{h(p['name'])} عزیز، درست زدی!</b> {E('sparkle','✨')}\n"
+                f"{DIV2}\n\n{E('check','✅')} <b>انتخاب تو:</b>  <code>{h(ch)}</code>\n"
+                f"{E('check','✅')} <b>جواب صحیح:</b>  <code>{h(ct)}</code>\n\n"
+                f"{E('fire','🔥')} <b>آفرین! فوق‌العاده بود!</b>\n"
+                f"{E('bolt','⚡')} امتیاز:  <code>+1</code>\n"
+                f"{E('star','⭐')} امتیاز کل:  <code>{p['score']}</code>\n{DIV}\n"
+                f"{E('rocket','🚀')} <i>همینطوری ادامه بده قهرمان!</i>")
     else:
         p["score"] -= 1
-        text = (
-            f"{E('warning', '😢')} <b>O O P S ! ! !</b> {E('warning', '😢')}\n"
-            f"{DIV}\n\n"
-            f"{E('alert', '⚠️')} <b>{h(p['name'])} جان، اشتباه بود</b>\n"
-            f"{DIV2}\n\n"
-            f"{E('cross', '❌')} <b>انتخاب تو:</b>  <code>{h(ch)}</code>\n"
-            f"{E('check', '✅')} <b>جواب درست:</b>  <code>{h(ct)}</code>\n\n"
-            f"{E('bolt', '⚡')} امتیاز:  <code>-1</code>\n"
-            f"{E('star', '⭐')} امتیاز کل:  <code>{p['score']}</code>\n"
-            f"{DIV}\n"
-            f"{E('magic', '✨')} <i>اشکال نداره، نوبت بعدی جبران می‌کنی!</i>"
-        )
+        text = (f"{E('warning','😢')} <b>O O P S ! ! !</b> {E('warning','😢')}\n{DIV}\n\n"
+                f"{E('alert','⚠️')} <b>{h(p['name'])} جان، اشتباه بود</b>\n{DIV2}\n\n"
+                f"{E('cross','❌')} <b>انتخاب تو:</b>  <code>{h(ch)}</code>\n"
+                f"{E('check','✅')} <b>جواب درست:</b>  <code>{h(ct)}</code>\n\n"
+                f"{E('bolt','⚡')} امتیاز:  <code>-1</code>\n"
+                f"{E('star','⭐')} امتیاز کل:  <code>{p['score']}</code>\n{DIV}\n"
+                f"{E('magic','✨')} <i>اشکال نداره، نوبت بعدی جبران می‌کنی!</i>")
     if cq.get("msg_id"):
         await safe_edit_msg(g["group_id"], cq["msg_id"], text, buttons=btns)
     await asyncio.sleep(2.5)
     if await quiz_check_target(g): return
-    g["current_index"] += 1
-    await quiz_next_turn(g)
+    g["current_index"] += 1; await quiz_next_turn(g)
 
 
 async def quiz_skip_turn(g):
@@ -1554,11 +1503,9 @@ async def quiz_skip_turn(g):
     if g.get("timeout_task"):
         try: g["timeout_task"].cancel()
         except Exception: pass
-    p = g["players"].get(cur)
-    pn = p["name"] if p else "?"
+    p = g["players"].get(cur); pn = p["name"] if p else "?"
     if g.get("turn_msg_id"):
-        try:
-            await client.delete_messages(g["group_id"], g["turn_msg_id"]); g["turn_msg_id"] = None
+        try: await client.delete_messages(g["group_id"], g["turn_msg_id"]); g["turn_msg_id"] = None
         except Exception: pass
     cq = g.get("current_question")
     if cq:
@@ -1566,19 +1513,16 @@ async def quiz_skip_turn(g):
         if cq.get("msg_id"):
             nb = _bb(cq["options"], cq["correct"])
             await safe_edit_msg(g["group_id"], cq["msg_id"],
-                text=(f"{E('skip', '⏭')} <b>نوبت رد شد</b>\n{DIV}\n\n"
-                      f"{E('user', '👤')} <b>{h(pn)}</b>\n"
-                      f"{E('info', 'ℹ️')} ادمین این نوبت رو رد کرد"),
-                buttons=nb)
+                text=(f"{E('skip','⏭')} <b>نوبت رد شد</b>\n{DIV}\n\n"
+                      f"{E('user','👤')} <b>{h(pn)}</b>\n"
+                      f"{E('info','ℹ️')} ادمین این نوبت رو رد کرد"), buttons=nb)
         if p: p["asked"] += 1
     await safe_send(g["group_id"],
-                    f"{E('skip', '⏭')} <b>نوبت {h(pn)} رد شد</b>\n"
-                    f"{E('info', 'ℹ️')} <i>در حال رفتن به نوبت بعدی...</i>",
-                    parse_mode="html")
+                    f"{E('skip','⏭')} <b>نوبت {h(pn)} رد شد</b>\n"
+                    f"{E('info','ℹ️')} <i>در حال رفتن به نوبت بعدی...</i>", parse_mode="html")
     await asyncio.sleep(1.5)
     if await quiz_check_target(g): return
-    g["current_index"] += 1
-    await quiz_next_turn(g)
+    g["current_index"] += 1; await quiz_next_turn(g)
 
 
 async def quiz_finish(g, winner_uid=None):
@@ -1586,24 +1530,22 @@ async def quiz_finish(g, winner_uid=None):
     try:
         if g.get("timeout_task"): g["timeout_task"].cancel()
     except Exception: pass
-    ps = g["players"]
-    sp = sorted(ps.items(), key=lambda x: x[1]["score"], reverse=True)
+    ps = g["players"]; sp = sorted(ps.items(), key=lambda x: x[1]["score"], reverse=True)
     if winner_uid and winner_uid in ps:
         w = ps[winner_uid]
-        hd = (f"{E('trophy', '🏆')} <b>برنده کوییز!</b> {E('trophy', '🏆')}\n{DIV}\n\n"
-              f"{E('crown', '👑')} <b>{h(w['name'])}</b>\n"
-              f"{E('star', '⭐')} امتیاز: <code>{w['score']}</code>\n"
-              f"{E('target', '🎯')} به امتیاز هدف رسید!")
+        hd = (f"{E('trophy','🏆')} <b>برنده کوییز!</b> {E('trophy','🏆')}\n{DIV}\n\n"
+              f"{E('crown','👑')} <b>{h(w['name'])}</b>\n"
+              f"{E('star','⭐')} امتیاز: <code>{w['score']}</code>\n"
+              f"{E('target','🎯')} به امتیاز هدف رسید!")
     elif sp:
         w = sp[0][1]
-        hd = (f"{E('flag', '🏁')} <b>کوییز تموم شد!</b>\n{DIV}\n\n"
-              f"{E('trophy', '🏆')} <b>برنده:</b> {h(w['name'])}\n"
-              f"{E('star', '⭐')} امتیاز: <code>{w['score']}</code>")
+        hd = (f"{E('flag','🏁')} <b>کوییز تموم شد!</b>\n{DIV}\n\n"
+              f"{E('trophy','🏆')} <b>برنده:</b> {h(w['name'])}\n"
+              f"{E('star','⭐')} امتیاز: <code>{w['score']}</code>")
     else:
-        hd = f"{E('flag', '🏁')} <b>کوییز تموم شد!</b>"
-    medals = ["🥇", "🥈", "🥉"]
-    lines = [hd, "", f"{E('stats', '📊')} <b>جدول نهایی:</b>"]
-    for i, (uid, p) in enumerate(sp):
+        hd = f"{E('flag','🏁')} <b>کوییز تموم شد!</b>"
+    medals = ["🥇", "🥈", "🥉"]; lines = [hd, "", f"{E('stats','📊')} <b>جدول نهایی:</b>"]
+    for i, (u, p) in enumerate(sp):
         m = medals[i] if i < 3 else "▫️"
         lines.append(f"{m} <b>{h(p['name'])}</b> — <code>{p['score']}</code> امتیاز")
     await safe_send(g["group_id"], "\n".join(lines), parse_mode="html")
@@ -1614,6 +1556,9 @@ async def quiz_finish(g, winner_uid=None):
     ACTIVE_GAMES.pop(g["group_id"], None)
 
 
+# ═══════════════════════════════════════════════════════════
+# 🎭 TD — TRUTH OR DARE
+# ═══════════════════════════════════════════════════════════
 def create_td_setup(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
          "admin_id": aid, "group_id": gid,
@@ -1623,8 +1568,7 @@ def create_td_setup(aid, gid):
          "current_index": 0, "current_player": None, "current_state": None,
          "join_msg_id": None, "turn_msg_id": None, "timeout_task": None,
          "used_texts": [], "auto_next_task": None}
-    TD_SETUP_GAMES[aid] = g
-    return g
+    TD_SETUP_GAMES[aid] = g; return g
 
 
 def _find_td_game(event):
@@ -1632,8 +1576,7 @@ def _find_td_game(event):
         mid = getattr(event, "message_id", None)
         if mid:
             for g in TD_ACTIVE_GAMES.values():
-                if g.get("join_msg_id") == mid or g.get("turn_msg_id") == mid:
-                    return g
+                if g.get("join_msg_id") == mid or g.get("turn_msg_id") == mid: return g
     except Exception: pass
     try:
         cid = getattr(event, "chat_id", None)
@@ -1647,35 +1590,31 @@ def _find_td_game(event):
 
 
 def render_td_welcome(g):
-    return (
-        f"{E('magic', '🎭')} <b>جرعت یا حقیقت — UNICORN</b> {E('magic', '🎭')}\n"
-        f"{DIV}\n\n"
-        f"{E('sparkle', '✨')} <b>سلام ادمین عزیز!</b> {E('wave', '👋')}\n\n"
-        f"{E('info', 'ℹ️')} <b>جریان بازی:</b>\n"
-        f"  {E('user', '👤')} بازیکنان توی گروه عضو می‌شن\n"
-        f"  {E('target', '🎯')} نوبت‌ها به صورت تصادفی\n"
-        f"  {E('hourglass', '⏳')} تایمر زنده هر ثانیه\n"
-        f"  {E('gamepad', '🎮')} بین ۴ گزینه انتخاب می‌کنن\n"
-        f"     🎭 حقیقت | 🔥 حقیقت+18 | ⚡ جرعت | 💋 جرعت+18\n"
-        f"  {E('gem', '💎')} بانک آماده — بدون هوش مصنوعی\n\n"
-        f"{E('magic', '✨')} <i>آماده‌ای؟</i>",
-        [[Button.inline("🚀 شروع تنظیمات", data=b"td_setup")],
-         [Button.inline("❌ لغو", data=b"td_cancel")]]
-    )
+    return (f"{E('magic','🎭')} <b>جرعت یا حقیقت — UNICORN</b> {E('magic','🎭')}\n{DIV}\n\n"
+            f"{E('sparkle','✨')} <b>سلام ادمین عزیز!</b> {E('wave','👋')}\n\n"
+            f"{E('info','ℹ️')} <b>جریان بازی:</b>\n"
+            f"  {E('user','👤')} بازیکنان توی گروه عضو می‌شن\n"
+            f"  {E('target','🎯')} نوبت‌ها به صورت تصادفی\n"
+            f"  {E('hourglass','⏳')} تایمر زنده هر ثانیه\n"
+            f"  {E('gamepad','🎮')} بین ۴ گزینه انتخاب می‌کنن\n"
+            f"     🎭 حقیقت | 🔥 حقیقت+18 | ⚡ جرعت | 💋 جرعت+18\n"
+            f"  {E('gem','💎')} بانک آماده — بدون هوش مصنوعی\n\n"
+            f"{E('magic','✨')} <i>آماده‌ای؟</i>",
+            [[Button.inline("🚀 شروع تنظیمات", data=b"td_setup")],
+             [Button.inline("❌ لغو", data=b"td_cancel")]])
 
 
 def render_td_categories(g):
     sel = g["categories"]
-    text = (f"{E('target', '🎯')} <b>مرحله ۱ از ۳ — دسته‌ها</b>\n{DIV}\n\n"
-            f"{E('info', 'ℹ️')} کدوم‌ها فعال باشن؟\n"
-            f"{E('alert', '⚠️')} <i>برای 18+ باید همه بزرگسال باشن</i>\n\n"
-            f"{E('list', '📋')} <b>انتخاب شده ({len(sel)}):</b>\n")
+    text = (f"{E('target','🎯')} <b>مرحله ۱ از ۳ — دسته‌ها</b>\n{DIV}\n\n"
+            f"{E('info','ℹ️')} کدوم‌ها فعال باشن؟\n"
+            f"{E('alert','⚠️')} <i>برای 18+ باید همه بزرگسال باشن</i>\n\n"
+            f"{E('list','📋')} <b>انتخاب شده ({len(sel)}):</b>\n")
     if sel:
         for c in sel:
             name = next((n for k, e, n in TD_CATEGORIES_ALL if k == c), c)
-            text += f"  {E('check', '✅')} <b>{name}</b>\n"
-    else:
-        text += f"  {E('cross', '➖')} <i>هیچی</i>\n"
+            text += f"  {E('check','✅')} <b>{name}</b>\n"
+    else: text += f"  {E('cross','➖')} <i>هیچی</i>\n"
     btns = []
     for k, e, n in TD_CATEGORIES_ALL:
         mark = "✅" if k in sel else "◽"
@@ -1688,37 +1627,30 @@ def render_td_categories(g):
 
 def render_td_settings(g):
     t = g["turns_per_player"]; tm = g["timeout_sec"]
-    tb = [Button.inline(("✅ " if n == t else "◽ ") + str(n), data=f"td_turns:{n}".encode())
-          for n in TD_TURNS_OPTIONS]
-    tmb = [Button.inline(("✅ " if n == tm else "◽ ") + f"{n}s", data=f"td_time:{n}".encode())
-           for n in TD_TIMEOUT_OPTIONS]
-    text = (f"{E('gamepad', '🎮')} <b>مرحله ۲ از ۳ — تنظیمات</b>\n{DIV}\n\n"
-            f"{E('chart', '📊')} <b>نوبت هر نفر:</b> <code>{t}</code>\n"
-            f"{E('hourglass', '⏳')} <b>زمان هر نوبت:</b> <code>{tm}</code> ثانیه\n\n"
-            f"{E('info', 'ℹ️')} <i>با دکمه‌ها تنظیم کن</i>")
+    tb = [Button.inline(("✅ " if n == t else "◽ ") + str(n), data=f"td_turns:{n}".encode()) for n in TD_TURNS_OPTIONS]
+    tmb = [Button.inline(("✅ " if n == tm else "◽ ") + f"{n}s", data=f"td_time:{n}".encode()) for n in TD_TIMEOUT_OPTIONS]
+    text = (f"{E('gamepad','🎮')} <b>مرحله ۲ از ۳ — تنظیمات</b>\n{DIV}\n\n"
+            f"{E('chart','📊')} <b>نوبت هر نفر:</b> <code>{t}</code>\n"
+            f"{E('hourglass','⏳')} <b>زمان هر نوبت:</b> <code>{tm}</code> ثانیه\n\n"
+            f"{E('info','ℹ️')} <i>با دکمه‌ها تنظیم کن</i>")
     return text, [
         [Button.inline("— 📊 تعداد نوبت —", data=b"td_noop")], tb,
         [Button.inline("— ⏳ زمان —", data=b"td_noop")], tmb,
-        [Button.inline("⬅️ قبلی", data=b"td_backcat"),
-         Button.inline("➡️ ادامه", data=b"td_summary")],
-        [Button.inline("❌ لغو", data=b"td_cancel")],
-    ]
+        [Button.inline("⬅️ قبلی", data=b"td_backcat"), Button.inline("➡️ ادامه", data=b"td_summary")],
+        [Button.inline("❌ لغو", data=b"td_cancel")]]
 
 
 def render_td_summary(g):
-    cats = "، ".join([next((n for k, e, n in TD_CATEGORIES_ALL if k == c), c)
-                      for c in g["categories"]])
-    text = (f"{E('check', '✅')} <b>مرحله ۳ از ۳ — خلاصه</b>\n{DIV}\n\n"
-            f"{E('magic', '🎭')} <b>جرعت یا حقیقت</b>\n\n"
-            f"{E('list', '📋')} <b>دسته‌ها:</b> {h(cats)}\n"
-            f"{E('chart', '📊')} <b>نوبت هر نفر:</b> <code>{g['turns_per_player']}</code>\n"
-            f"{E('hourglass', '⏳')} <b>زمان هر نوبت:</b> <code>{g['timeout_sec']}</code> ثانیه\n\n"
-            f"{E('info', 'ℹ️')} <i>بعد از تأیید، پیام شرکت توی گروه فرستاده می‌شه</i>")
-    return text, [
-        [Button.inline("🚀 ایجاد بازی در گروه", data=b"td_create")],
-        [Button.inline("⬅️ قبلی", data=b"td_settings")],
-        [Button.inline("❌ لغو", data=b"td_cancel")],
-    ]
+    cats = "، ".join([next((n for k, e, n in TD_CATEGORIES_ALL if k == c), c) for c in g["categories"]])
+    text = (f"{E('check','✅')} <b>مرحله ۳ از ۳ — خلاصه</b>\n{DIV}\n\n"
+            f"{E('magic','🎭')} <b>جرعت یا حقیقت</b>\n\n"
+            f"{E('list','📋')} <b>دسته‌ها:</b> {h(cats)}\n"
+            f"{E('chart','📊')} <b>نوبت هر نفر:</b> <code>{g['turns_per_player']}</code>\n"
+            f"{E('hourglass','⏳')} <b>زمان هر نوبت:</b> <code>{g['timeout_sec']}</code> ثانیه\n\n"
+            f"{E('info','ℹ️')} <i>بعد از تأیید، پیام شرکت توی گروه فرستاده می‌شه</i>")
+    return text, [[Button.inline("🚀 ایجاد بازی در گروه", data=b"td_create")],
+                  [Button.inline("⬅️ قبلی", data=b"td_settings")],
+                  [Button.inline("❌ لغو", data=b"td_cancel")]]
 
 
 async def td_send_setup_menu(aid, screen="welcome", game=None):
@@ -1730,40 +1662,29 @@ async def td_send_setup_menu(aid, screen="welcome", game=None):
     elif screen == "summary": text, b = render_td_summary(game)
     else: return
     try: await safe_send(aid, text, buttons=b, parse_mode="html")
-    except Exception as e: logger.exception(f"td_send_setup_menu: {e}")
+    except Exception as e: logger.exception(f"td menu: {e}")
 
 
 def _render_td_join_text(g):
-    pl = list(g["players"].values())
-    c = len(pl)
-    if c == 0:
-        nb = f"     {E('cross', '➖')} <i>هنوز کسی نیست</i>"
+    pl = list(g["players"].values()); c = len(pl)
+    if c == 0: nb = f"     {E('cross','➖')} <i>هنوز کسی نیست</i>"
     else:
-        re_ = ["🥇", "🥈", "🥉"]
-        lines = []
+        re_ = ["🥇", "🥈", "🥉"]; lines = []
         for i, p in enumerate(pl):
             r = re_[i] if i < 3 else f"<b>{i+1:02d}.</b>"
             u = f"  <i>@{p['username']}</i>" if p.get("username") else ""
-            lines.append(f"  {r} {E('check', '✅')} <b>{h(p['name'])}</b>{u}")
+            lines.append(f"  {r} {E('check','✅')} <b>{h(p['name'])}</b>{u}")
         nb = "\n".join(lines)
-    cats = "، ".join([next((n for k, e, n in TD_CATEGORIES_ALL if k == x), x)
-                      for x in g["categories"]])
-    text = (
-        f"{E('magic', '🎭')} <b>UNICORN · TRUTH or DARE</b> {E('magic', '🎭')}\n"
-        f"{DIV}\n\n"
-        f"{E('party', '🎉')} <b>یه بازی هیجان‌انگیز شروع می‌شه!</b>\n"
-        f"{DIV2}\n\n"
-        f"{E('list', '📋')} <b>دسته‌ها:</b>  {h(cats)}\n"
-        f"{E('chart', '📊')} <b>نوبت هر نفر:</b>  <code>{g['turns_per_player']}</code>\n"
-        f"{E('hourglass', '⏳')} <b>زمان هر نوبت:</b>  <code>{g['timeout_sec']}</code> ثانیه\n\n"
-        f"🎲 <b>ترتیب بازیکنان تصادفی</b>\n"
-        f"{E('gem', '💎')} <b>بانک آماده — بدون AI</b>\n\n"
-        f"{DIV}\n"
-        f"{E('crown', '👑')} <b>شرکت‌کنندگان ({c}):</b>\n"
-        f"{nb}\n"
-        f"{DIV}\n\n"
-        f"{E('target', '🎯')} <b>برای شرکت، روی دکمه بزن</b> {E('point', '👇')}"
-    )
+    cats = "، ".join([next((n for k, e, n in TD_CATEGORIES_ALL if k == x), x) for x in g["categories"]])
+    text = (f"{E('magic','🎭')} <b>UNICORN · TRUTH or DARE</b> {E('magic','🎭')}\n{DIV}\n\n"
+            f"{E('party','🎉')} <b>یه بازی هیجان‌انگیز شروع می‌شه!</b>\n{DIV2}\n\n"
+            f"{E('list','📋')} <b>دسته‌ها:</b>  {h(cats)}\n"
+            f"{E('chart','📊')} <b>نوبت هر نفر:</b>  <code>{g['turns_per_player']}</code>\n"
+            f"{E('hourglass','⏳')} <b>زمان هر نوبت:</b>  <code>{g['timeout_sec']}</code> ثانیه\n\n"
+            f"🎲 <b>ترتیب بازیکنان تصادفی</b>\n"
+            f"{E('gem','💎')} <b>بانک آماده — بدون AI</b>\n\n{DIV}\n"
+            f"{E('crown','👑')} <b>شرکت‌کنندگان ({c}):</b>\n{nb}\n{DIV}\n\n"
+            f"{E('target','🎯')} <b>برای شرکت، روی دکمه بزن</b> {E('point','👇')}")
     jb = f"✋ شرکت می‌کنم  ·  ({c})" if c > 0 else "✋ شرکت می‌کنم"
     return text, [[Button.inline(jb, data=b"td_join")],
                   [Button.inline("▶️ شروع بازی (ادمین)", data=b"td_start")]]
@@ -1774,7 +1695,7 @@ async def td_broadcast_join(g):
     try:
         sent = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
         if sent: g["join_msg_id"] = sent.id
-    except Exception as e: logger.exception(f"td_broadcast_join: {e}")
+    except Exception as e: logger.exception(f"td bcast: {e}")
 
 
 async def td_refresh_join(g):
@@ -1788,8 +1709,7 @@ async def td_refresh_join(g):
     except Exception as e: logger.warning(f"td refresh m1: {e}")
     try:
         msg = await client.get_messages(g["group_id"], ids=mid)
-        if msg:
-            await msg.edit(text=text, buttons=btns, parse_mode="html"); return
+        if msg: await msg.edit(text=text, buttons=btns, parse_mode="html"); return
     except Exception as e: logger.warning(f"td refresh m2: {e}")
     try:
         new = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
@@ -1802,24 +1722,21 @@ async def td_refresh_join(g):
 
 async def td_start_game(g):
     g["state"] = "playing"
-    order = list(g["players"].keys())
-    random.shuffle(order)
+    order = list(g["players"].keys()); random.shuffle(order)
     g["order"] = order; g["current_index"] = 0
-    pl = "\n".join([f"  {E('point', '👉')} <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
+    pl = "\n".join([f"  {E('point','👉')} <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
     await safe_send(g["group_id"],
-                    f"{E('party', '🎉')} <b>بازی شروع شد!</b> {E('party', '🎉')}\n{DIV}\n\n"
+                    f"{E('party','🎉')} <b>بازی شروع شد!</b> {E('party','🎉')}\n{DIV}\n\n"
                     f"🎲 <b>ترتیب تصادفی بازیکنان:</b>\n{pl}\n\n"
-                    f"{E('rocket', '🚀')} <b>آماده باشید...</b>", parse_mode="html")
-    await asyncio.sleep(2)
-    await td_next_turn(g)
+                    f"{E('rocket','🚀')} <b>آماده باشید...</b>", parse_mode="html")
+    await asyncio.sleep(2); await td_next_turn(g)
 
 
 async def td_next_turn(g):
     if g["state"] != "playing": return
-    if not g["order"]:
-        await td_finish(g); return
+    if not g["order"]: await td_finish(g); return
     n = len(g["order"])
-    if all(g["players"][uid]["turns_done"] >= g["turns_per_player"] for uid in g["order"]):
+    if all(g["players"][u]["turns_done"] >= g["turns_per_player"] for u in g["order"]):
         await td_finish(g); return
     tries = 0
     while tries < n:
@@ -1827,42 +1744,30 @@ async def td_next_turn(g):
         uid = g["order"][idx]
         if g["players"][uid]["turns_done"] < g["turns_per_player"]: break
         g["current_index"] += 1; tries += 1
-    else:
-        await td_finish(g); return
-    uid = g["order"][g["current_index"] % n]
-    p = g["players"][uid]
-    g["current_player"] = uid
-    g["current_state"] = "picking_choice"
+    else: await td_finish(g); return
+    uid = g["order"][g["current_index"] % n]; p = g["players"][uid]
+    g["current_player"] = uid; g["current_state"] = "picking_choice"
     if g.get("turn_msg_id"):
         try: await client.delete_messages(g["group_id"], g["turn_msg_id"])
         except Exception: pass
     btns = []
-    for k, e, n in TD_CATEGORIES_ALL:
+    for k, e, n2 in TD_CATEGORIES_ALL:
         if k not in g["categories"]: continue
-        btns.append(Button.inline(f"{e} {n}", data=f"td_pick:{k}".encode()))
+        btns.append(Button.inline(f"{e} {n2}", data=f"td_pick:{k}".encode()))
     rows = []
-    for i in range(0, len(btns), 2):
-        rows.append(btns[i:i+2])
+    for i in range(0, len(btns), 2): rows.append(btns[i:i+2])
     rows.append([Button.inline("⏭ رد کردن نوبت (ادمین)", data=b"td_skip_turn")])
-    total = g["timeout_sec"]
-    bar = time_bar_colored(total, total)
-    tb = time_badge(total, total)
-    text = (
-        f"{E('magic', '🎭')} <b>TRUTH or DARE</b> {E('magic', '🎭')}\n"
-        f"{DIV}\n\n"
-        f"{E('target', '🎯')} <b>نوبت {h(p['name'])}</b>\n"
-        f"{E('chart', '📊')} نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
-        f"{DIV2}\n"
-        f"{tb} <b>زمان:</b> <code>{total}</code> ثانیه\n"
-        f"{bar}  <b>100%</b>\n"
-        f"{DIV2}\n\n"
-        f"{E('sparkle', '✨')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
-        f"  {E('magic', '🎭')} <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
-        f"  {E('fire', '🔥')} <b>حقیقت +18</b>  <i>— سوال جسورانه</i>\n"
-        f"  {E('bolt', '⚡')} <b>جرعت</b>  <i>— چالش بامزه</i>\n"
-        f"  {E('heart', '💋')} <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
-        f"{E('info', 'ℹ️')} <i>فقط خودت کلیک کن</i>"
-    )
+    total = g["timeout_sec"]; bar = time_bar_colored(total, total); tb = time_badge(total, total)
+    text = (f"{E('magic','🎭')} <b>TRUTH or DARE</b> {E('magic','🎭')}\n{DIV}\n\n"
+            f"{E('target','🎯')} <b>نوبت {h(p['name'])}</b>\n"
+            f"{E('chart','📊')} نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
+            f"{DIV2}\n{tb} <b>زمان:</b> <code>{total}</code> ثانیه\n{bar}  <b>100%</b>\n{DIV2}\n\n"
+            f"{E('sparkle','✨')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
+            f"  {E('magic','🎭')} <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
+            f"  {E('fire','🔥')} <b>حقیقت +18</b>  <i>— سوال جسورانه</i>\n"
+            f"  {E('bolt','⚡')} <b>جرعت</b>  <i>— چالش بامزه</i>\n"
+            f"  {E('heart','💋')} <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
+            f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
     sent = await safe_send(g["group_id"], text, buttons=rows, parse_mode="html")
     if sent: g["turn_msg_id"] = sent.id
     if g.get("timeout_task"):
@@ -1872,47 +1777,38 @@ async def td_next_turn(g):
 
 
 async def td_live_countdown(g, uid, total):
-    logger.info(f"⏱ TD countdown {total}s")
     try:
-        gid = g["group_id"]
-        last_shown = None
+        gid = g["group_id"]; last_shown = None
         for remaining in range(total, -1, -1):
-            if g.get("current_player") != uid or g.get("current_state") != "picking_choice":
-                return
+            if g.get("current_player") != uid or g.get("current_state") != "picking_choice": return
             p = g["players"].get(uid)
             if not p or g.get("turn_msg_id") is None:
                 await asyncio.sleep(0.5); continue
-            bar = time_bar_colored(remaining, total)
-            tb = time_badge(remaining, total)
+            bar = time_bar_colored(remaining, total); tb = time_badge(remaining, total)
             pct = int(100 * remaining / total) if total > 0 else 0
             btns = []
-            for k, e, n in TD_CATEGORIES_ALL:
+            for k, e, n2 in TD_CATEGORIES_ALL:
                 if k not in g["categories"]: continue
-                btns.append(Button.inline(f"{e} {n}", data=f"td_pick:{k}".encode()))
+                btns.append(Button.inline(f"{e} {n2}", data=f"td_pick:{k}".encode()))
             rows = []
-            for i in range(0, len(btns), 2):
-                rows.append(btns[i:i+2])
+            for i in range(0, len(btns), 2): rows.append(btns[i:i+2])
             rows.append([Button.inline("⏭ رد کردن نوبت (ادمین)", data=b"td_skip_turn")])
             if remaining <= 3 and remaining > 0:
-                tw = f"{E('alert', '🚨')} <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
+                tw = f"{E('alert','🚨')} <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
             elif remaining == 0:
-                tw = f"{E('hourglass', '⏰')} <b>وقت تموم شد!</b>"
+                tw = f"{E('hourglass','⏰')} <b>وقت تموم شد!</b>"
             else:
                 tw = f"{tb} <b>زمان:</b> <code>{remaining}</code> ثانیه"
-            text = (
-                f"{E('magic', '🎭')} <b>TRUTH or DARE</b> {E('magic', '🎭')}\n"
-                f"{DIV}\n\n"
-                f"{E('target', '🎯')} <b>نوبت {h(p['name'])}</b>\n"
-                f"{E('chart', '📊')} نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
-                f"{DIV2}\n{tw}\n{bar}  <b>{pct}%</b>\n"
-                f"{DIV2}\n\n"
-                f"{E('sparkle', '✨')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
-                f"  {E('magic', '🎭')} <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
-                f"  {E('fire', '🔥')} <b>حقیقت +18</b>  <i>— سوال جسورانه</i>\n"
-                f"  {E('bolt', '⚡')} <b>جرعت</b>  <i>— چالش بامزه</i>\n"
-                f"  {E('heart', '💋')} <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
-                f"{E('info', 'ℹ️')} <i>فقط خودت کلیک کن</i>"
-            )
+            text = (f"{E('magic','🎭')} <b>TRUTH or DARE</b> {E('magic','🎭')}\n{DIV}\n\n"
+                    f"{E('target','🎯')} <b>نوبت {h(p['name'])}</b>\n"
+                    f"{E('chart','📊')} نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
+                    f"{DIV2}\n{tw}\n{bar}  <b>{pct}%</b>\n{DIV2}\n\n"
+                    f"{E('sparkle','✨')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
+                    f"  {E('magic','🎭')} <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
+                    f"  {E('fire','🔥')} <b>حقیقت +18</b>  <i>— سوال جسورانه</i>\n"
+                    f"  {E('bolt','⚡')} <b>جرعت</b>  <i>— چالش بامزه</i>\n"
+                    f"  {E('heart','💋')} <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
+                    f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
             if text != last_shown:
                 ok = await safe_edit_msg(gid, g["turn_msg_id"], text, buttons=rows)
                 if ok: last_shown = text
@@ -1922,110 +1818,64 @@ async def td_live_countdown(g, uid, total):
             p = g["players"].get(uid)
             if p:
                 await safe_send(g["group_id"],
-                                f"{E('hourglass', '⏰')} <b>وقت {h(p['name'])} تموم شد!</b>\n"
-                                f"{E('info', 'ℹ️')} نوبت بعدی می‌ره...", parse_mode="html")
+                                f"{E('hourglass','⏰')} <b>وقت {h(p['name'])} تموم شد!</b>\n"
+                                f"{E('info','ℹ️')} نوبت بعدی می‌ره...", parse_mode="html")
                 p["turns_done"] += 1
-                await asyncio.sleep(1.5)
-                g["current_index"] += 1
+                await asyncio.sleep(1.5); g["current_index"] += 1
                 await td_next_turn(g)
     except asyncio.CancelledError: return
     except Exception as e: logger.exception(f"td cd err: {e}")
 
 
 async def td_play(g, uid, kind):
-    """نمایش سوال/جرعت با ایموجی پرمیوم + دکمه جواب دادم"""
-    gid = g["group_id"]
-    p = g["players"].get(uid)
-    if not p:
-        return
-
+    gid = g["group_id"]; p = g["players"].get(uid)
+    if not p: return
     if g.get("turn_msg_id"):
-        try:
-            await client.delete_messages(gid, g["turn_msg_id"])
-            g["turn_msg_id"] = None
-        except Exception:
-            pass
+        try: await client.delete_messages(gid, g["turn_msg_id"]); g["turn_msg_id"] = None
+        except Exception: pass
     if g.get("timeout_task"):
-        try:
-            g["timeout_task"].cancel()
-        except Exception:
-            pass
+        try: g["timeout_task"].cancel()
+        except Exception: pass
     if g.get("auto_next_task"):
-        try:
-            g["auto_next_task"].cancel()
-        except Exception:
-            pass
-
+        try: g["auto_next_task"].cancel()
+        except Exception: pass
     label = next((n for k, e, n in TD_CATEGORIES_ALL if k == kind), kind)
-
     txt = get_td_from_bank(kind, g.get("used_texts", []))
     if not txt:
-        await safe_send(gid, f"{E('cross', '❌')} <b>بانک خالی است</b>", parse_mode="html")
+        await safe_send(gid, f"{E('cross','❌')} <b>بانک خالی است</b>", parse_mode="html")
         p["turns_done"] += 1
-        await asyncio.sleep(2)
-        g["current_index"] += 1
-        await td_next_turn(g)
-        return
-
+        await asyncio.sleep(2); g["current_index"] += 1; await td_next_turn(g); return
     g["used_texts"].append(txt)
-    if len(g["used_texts"]) > 400:
-        g["used_texts"] = g["used_texts"][-400:]
-
-    # ═══ Header با ایموجی پرمیوم ═══
-    header = {
-        "truth":   f"{E('magic', '🎭')}  <b>ح  ق  ی  ق  ت</b>  {E('magic', '🎭')}",
-        "truth18": f"{E('fire', '🔥')}  <b>حقیقت +18</b>  {E('fire', '🔥')}",
-        "dare":    f"{E('bolt', '⚡')}  <b>ج  ر  ع  ت</b>  {E('bolt', '⚡')}",
-        "dare18":  f"{E('heart', '💋')}  <b>جرعت +18</b>  {E('heart', '💋')}",
-    }.get(kind, f"{E('magic', '🎭')}  <b>{label}</b>  {E('magic', '🎭')}")
-
-    # ═══ تزئین متن با ایموجی پرمیوم دو سر ═══
+    if len(g["used_texts"]) > 400: g["used_texts"] = g["used_texts"][-400:]
+    header = {"truth": f"{E('magic','🎭')}  <b>ح  ق  ی  ق  ت</b>  {E('magic','🎭')}",
+              "truth18": f"{E('fire','🔥')}  <b>حقیقت +18</b>  {E('fire','🔥')}",
+              "dare": f"{E('bolt','⚡')}  <b>ج  ر  ع  ت</b>  {E('bolt','⚡')}",
+              "dare18": f"{E('heart','💋')}  <b>جرعت +18</b>  {E('heart','💋')}"}.get(kind, f"{E('magic','🎭')}  <b>{label}</b>  {E('magic','🎭')}")
     decorated = decorate_td_text(kind, h(txt))
-
-    # ═══ Header قهرمان ═══
-    hero_line = {
-        "truth":   f"{E('sparkle', '✨')} <b>سوال صادقانه برای تو</b> {E('sparkle', '✨')}",
-        "truth18": f"{E('fire', '🔥')} <b>سوال جسورانه برای تو</b> {E('fire', '🔥')}",
-        "dare":    f"{E('party', '🎉')} <b>چالش بامزه برای تو</b> {E('party', '🎉')}",
-        "dare18":  f"{E('heart', '💋')} <b>چالش جسورانه برای تو</b> {E('heart', '💋')}",
-    }.get(kind, f"{E('magic', '🎭')} <b>متن بازی</b> {E('magic', '🎭')}")
-
-    # ═══ نتیجه نهایی خفن ═══
-    result = (
-        f"{header}\n"
-        f"{DIV}\n\n"
-        f"{hero_line}\n"
-        f"{DIV2}\n\n"
-        f"{E('crown', '👑')} <b>نوبت:</b>  <b>{h(p['name'])}</b>  {E('crown', '👑')}\n\n"
-        f"{E('message', '💬')} <b>متن:</b>\n\n"
-        f"<blockquote>{decorated}</blockquote>\n\n"
-        f"{DIV2}\n"
-        f"{E('gem', '💎')} <i>انجامش بده و توی گروه بگو!</i>\n"
-        f"{E('sparkle', '✨')} <i>وقتی جواب دادی، دکمه زیر رو بزن</i> {E('point', '👇')}"
-    )
-
-    # ═══ دکمه‌ها: جواب دادم (بازیکن) + رد کردن (ادمین) ═══
-    btns = [
-        [Button.inline("✅ جواب دادم — نفر بعدی", data=b"td_done")],
-        [Button.inline("⏭ رد کردن نوبت (ادمین)", data=b"td_next_now")],
-    ]
+    hero_line = {"truth": f"{E('sparkle','✨')} <b>سوال صادقانه برای تو</b> {E('sparkle','✨')}",
+                 "truth18": f"{E('fire','🔥')} <b>سوال جسورانه برای تو</b> {E('fire','🔥')}",
+                 "dare": f"{E('party','🎉')} <b>چالش بامزه برای تو</b> {E('party','🎉')}",
+                 "dare18": f"{E('heart','💋')} <b>چالش جسورانه برای تو</b> {E('heart','💋')}"}.get(kind, f"{E('magic','🎭')} <b>متن بازی</b> {E('magic','🎭')}")
+    result = (f"{header}\n{DIV}\n\n{hero_line}\n{DIV2}\n\n"
+              f"{E('crown','👑')} <b>نوبت:</b>  <b>{h(p['name'])}</b>  {E('crown','👑')}\n\n"
+              f"{E('message','💬')} <b>متن:</b>\n\n"
+              f"<blockquote>{decorated}</blockquote>\n\n"
+              f"{DIV2}\n{E('gem','💎')} <i>انجامش بده و توی گروه بگو!</i>\n"
+              f"{E('sparkle','✨')} <i>وقتی جواب دادی، دکمه زیر رو بزن</i> {E('point','👇')}")
+    btns = [[Button.inline("✅ جواب دادم — نفر بعدی", data=b"td_done")],
+            [Button.inline("⏭ رد کردن نوبت (ادمین)", data=b"td_next_now")]]
     await safe_send(gid, result, buttons=btns, parse_mode="html")
-
     p["turns_done"] += 1
     g["current_state"] = "waiting_done"
-    # ═══ auto next بعد از ۴۰ ثانیه اگه کسی دکمه نزد ═══
     g["auto_next_task"] = asyncio.create_task(td_auto_next(g, uid))
 
 
 async def td_auto_next(g, uid):
-    try:
-        await asyncio.sleep(40)
-    except asyncio.CancelledError:
-        return
+    try: await asyncio.sleep(40)
+    except asyncio.CancelledError: return
     if g.get("current_player") != uid: return
     if g.get("current_state") != "waiting_done": return
-    g["current_state"] = "moving_on"
-    g["current_index"] += 1
+    g["current_state"] = "moving_on"; g["current_index"] += 1
     await td_next_turn(g)
 
 
@@ -2033,42 +1883,33 @@ async def td_skip_turn(g):
     if g["state"] != "playing": return
     cur = g.get("current_player")
     if not cur: return
-    if g.get("timeout_task"):
-        try: g["timeout_task"].cancel()
-        except Exception: pass
-    if g.get("auto_next_task"):
-        try: g["auto_next_task"].cancel()
-        except Exception: pass
-    p = g["players"].get(cur)
-    pn = p["name"] if p else "?"
+    for t in ("timeout_task", "auto_next_task"):
+        if g.get(t):
+            try: g[t].cancel()
+            except Exception: pass
+    p = g["players"].get(cur); pn = p["name"] if p else "?"
     if g.get("turn_msg_id"):
         try: await client.delete_messages(g["group_id"], g["turn_msg_id"]); g["turn_msg_id"] = None
         except Exception: pass
     await safe_send(g["group_id"],
-                    f"{E('skip', '⏭')} <b>نوبت {h(pn)} رد شد</b>\n"
-                    f"{E('info', 'ℹ️')} <i>در حال رفتن به نوبت بعدی...</i>",
-                    parse_mode="html")
+                    f"{E('skip','⏭')} <b>نوبت {h(pn)} رد شد</b>\n"
+                    f"{E('info','ℹ️')} <i>در حال رفتن به نوبت بعدی...</i>", parse_mode="html")
     if p: p["turns_done"] += 1
-    await asyncio.sleep(1.5)
-    g["current_index"] += 1
-    await td_next_turn(g)
+    await asyncio.sleep(1.5); g["current_index"] += 1; await td_next_turn(g)
 
 
 async def td_finish(g):
     g["state"] = "finished"
-    try:
-        if g.get("timeout_task"): g["timeout_task"].cancel()
-    except Exception: pass
-    try:
-        if g.get("auto_next_task"): g["auto_next_task"].cancel()
-    except Exception: pass
+    for t in ("timeout_task", "auto_next_task"):
+        if g.get(t):
+            try: g[t].cancel()
+            except Exception: pass
     ps = g["players"]
-    lines = [f"{E('flag', '🏁')} <b>بازی جرعت یا حقیقت تموم شد!</b>\n{DIV}\n\n",
-             f"{E('stats', '📊')} <b>خلاصه بازیکنان:</b>"]
+    lines = [f"{E('flag','🏁')} <b>بازی جرعت یا حقیقت تموم شد!</b>\n{DIV}\n\n",
+             f"{E('stats','📊')} <b>خلاصه بازیکنان:</b>"]
     for uid, p in ps.items():
-        lines.append(f"  {E('point', '👉')} <b>{h(p['name'])}</b> — "
-                     f"<code>{p['turns_done']}</code> نوبت")
-    lines.append(f"\n{E('party', '🎉')} <b>ممنون که بازی کردید!</b>")
+        lines.append(f"  {E('point','👉')} <b>{h(p['name'])}</b> — <code>{p['turns_done']}</code> نوبت")
+    lines.append(f"\n{E('party','🎉')} <b>ممنون که بازی کردید!</b>")
     await safe_send(g["group_id"], "\n".join(lines), parse_mode="html")
     for uid, p in ps.items():
         if p["turns_done"] > 0:
@@ -2077,6 +1918,289 @@ async def td_finish(g):
     TD_ACTIVE_GAMES.pop(g["group_id"], None)
 
 
+# ═══════════════════════════════════════════════════════════
+# 🕵️ RIDDLE ENGINE
+# ═══════════════════════════════════════════════════════════
+def create_riddle_setup(aid, gid):
+    g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
+         "admin_id": aid, "group_id": gid,
+         "categories": [], "timeout_sec": 120,
+         "difficulty": "متوسط", "state": "setup",
+         "riddle": None, "message_id": None,
+         "answers": {}, "start_time": None,
+         "timeout_task": None, "hint_tasks": []}
+    RIDDLE_SETUP_GAMES[aid] = g; return g
+
+
+def _find_riddle_game(event):
+    try:
+        mid = getattr(event, "message_id", None)
+        if mid:
+            for g in RIDDLE_ACTIVE_GAMES.values():
+                if g.get("message_id") == mid: return g
+    except Exception: pass
+    try:
+        cid = getattr(event, "chat_id", None)
+        if cid and RIDDLE_ACTIVE_GAMES.get(cid): return RIDDLE_ACTIVE_GAMES.get(cid)
+    except Exception: pass
+    try:
+        w = [g for g in RIDDLE_ACTIVE_GAMES.values() if g.get("state") == "playing"]
+        if len(w) == 1: return w[0]
+    except Exception: pass
+    return None
+
+
+def render_riddle_welcome(g):
+    return (f"{E('detective','🕵️')} <b>بازی معما — UNICORN DETECTIVE</b> {E('detective','🕵️')}\n{DIV}\n\n"
+            f"{E('sparkle','✨')} <b>سلام کارآگاه عزیز!</b> {E('wave','👋')}\n\n"
+            f"{E('info','ℹ️')} <b>جریان بازی:</b>\n"
+            f"  {E('brain','🧠')} هوش مصنوعی یه معمای کارآگاهی می‌سازه\n"
+            f"  {E('message','💬')} معما توی گروه پست می‌شه\n"
+            f"  {E('user','👤')} کاربران با <b>ریپلای</b> جواب می‌دن\n"
+            f"  {E('hourglass','⏳')} زمان {mmss(90)} یا {mmss(120)}\n"
+            f"  {E('clue','🔍')} راهنماها تدریجی نمایش داده می‌شن\n"
+            f"  {E('fire','🔥')} AI جواب‌ها رو تحلیل می‌کنه و امتیاز می‌ده\n\n"
+            f"{E('magic','✨')} <i>آماده‌ای کارآگاه؟</i>",
+            [[Button.inline("🚀 شروع تنظیمات", data=b"rd_setup")],
+             [Button.inline("❌ لغو", data=b"rd_cancel")]])
+
+
+def render_riddle_categories(g):
+    sel = g["categories"]
+    text = (f"{E('target','🎯')} <b>مرحله ۱ از ۳ — دسته‌ها</b>\n{DIV}\n\n"
+            f"{E('info','ℹ️')} هر تعداد که می‌خوای انتخاب کن:\n\n"
+            f"{E('list','📋')} <b>انتخاب شده ({len(sel)}):</b>\n")
+    if sel:
+        for c in sel:
+            name = next((n for k, e, n in RIDDLE_CATEGORIES if k == c), c)
+            text += f"  {E('check','✅')} <b>{name}</b>\n"
+    else: text += f"  {E('cross','➖')} <i>هنوز چیزی انتخاب نکردی</i>\n"
+    btns, row = [], []
+    for i, (k, e, n) in enumerate(RIDDLE_CATEGORIES):
+        mark = "✅" if k in sel else "◽"
+        row.append(Button.inline(f"{mark} {e} {n}", data=f"rd_cat:{k}".encode()))
+        if len(row) == 2: btns.append(row); row = []
+    if row: btns.append(row)
+    if sel: btns.append([Button.inline("➡️ ادامه", data=b"rd_settings")])
+    else: btns.append([Button.inline("⛔ حداقل یکی", data=b"rd_noop")])
+    btns.append([Button.inline("❌ لغو", data=b"rd_cancel")])
+    return text, btns
+
+
+def render_riddle_settings(g):
+    t = g["timeout_sec"]
+    tb = [Button.inline(("✅ " if n == t else "◽ ") + mmss(n), data=f"rd_time:{n}".encode()) for n in RIDDLE_TIME_OPTIONS]
+    text = (f"{E('gamepad','🎮')} <b>مرحله ۲ از ۳ — زمان</b>\n{DIV}\n\n"
+            f"{E('hourglass','⏳')} <b>زمان بازی:</b> <code>{mmss(t)}</code>\n\n"
+            f"{E('info','ℹ️')} <i>چقدر وقت داشته باشن؟</i>")
+    return text, [
+        [Button.inline("— ⏳ زمان —", data=b"rd_noop")], tb,
+        [Button.inline("⬅️ قبلی", data=b"rd_backcat"), Button.inline("➡️ ادامه", data=b"rd_summary")],
+        [Button.inline("❌ لغو", data=b"rd_cancel")]]
+
+
+def render_riddle_summary(g):
+    cats = "، ".join([next((n for k, e, n in RIDDLE_CATEGORIES if k == c), c) for c in g["categories"]])
+    text = (f"{E('check','✅')} <b>مرحله ۳ از ۳ — خلاصه</b>\n{DIV}\n\n"
+            f"{E('detective','🕵️')} <b>بازی معما</b>\n\n"
+            f"{E('list','📋')} <b>دسته‌ها:</b> {h(cats)}\n"
+            f"{E('hourglass','⏳')} <b>زمان:</b> <code>{mmss(g['timeout_sec'])}</code>\n\n"
+            f"{E('info','ℹ️')} <i>با تأیید، AI معما می‌سازه و توی گروه پست می‌شه</i>")
+    return text, [[Button.inline("🚀 ساخت معما و شروع", data=b"rd_create")],
+                  [Button.inline("⬅️ قبلی", data=b"rd_settings")],
+                  [Button.inline("❌ لغو", data=b"rd_cancel")]]
+
+
+async def riddle_send_setup_menu(aid, screen="welcome", game=None):
+    if game is None: game = RIDDLE_SETUP_GAMES.get(aid)
+    if not game: return
+    if screen == "welcome": text, b = render_riddle_welcome(game)
+    elif screen == "categories": text, b = render_riddle_categories(game)
+    elif screen == "settings": text, b = render_riddle_settings(game)
+    elif screen == "summary": text, b = render_riddle_summary(game)
+    else: return
+    try: await safe_send(aid, text, buttons=b, parse_mode="html")
+    except Exception as e: logger.exception(f"rd menu: {e}")
+
+
+async def riddle_broadcast(g):
+    """ارسال معما به گروه و شروع تایمر"""
+    r = g["riddle"]
+    total = g["timeout_sec"]
+    bar = time_bar_colored(total, total)
+    text = (f"{E('detective','🕵️')} <b>مـعـمـای کـارآگـاهـی</b> {E('detective','🕵️')}\n"
+            f"{DIV}\n\n"
+            f"{E('fire','🔥')} <b>{h(r['title'])}</b>\n"
+            f"{DIV2}\n\n"
+            f"{E('book','📖')} <b>داستان:</b>\n"
+            f"<blockquote>{h(r['story'])}</blockquote>\n\n"
+            f"{E('target','🎯')} <b>سوال:</b>\n"
+            f"<blockquote>{h(r['question'])}</blockquote>\n\n"
+            f"{DIV2}\n"
+            f"{E('hourglass','⏳')} <b>زمان:</b> <code>{mmss(total)}</code>\n"
+            f"{bar}  <b>100%</b>\n"
+            f"{DIV2}\n\n"
+            f"{E('info','ℹ️')} <i>برای شرکت، روی این پیام <b>ریپلای</b> کن و جوابت رو بنویس</i> {E('point','👇')}\n"
+            f"{E('alert','⚠️')} <i>هر کسی فقط یک جواب می‌تونه بده (آخرین جواب ثبت می‌شه)</i>\n\n"
+            f"{E('clue','🔍')} <i>راهنماها تدریجی میان...</i>")
+    sent = await safe_send(g["group_id"], text, parse_mode="html")
+    if sent: g["message_id"] = sent.id
+    g["start_time"] = time.time()
+    g["state"] = "playing"
+    RIDDLE_ACTIVE_GAMES[g["group_id"]] = g
+
+    # تایمر اصلی
+    g["timeout_task"] = asyncio.create_task(riddle_timer(g))
+    # راهنماها
+    hints = r.get("hints", [])[:3]
+    for i, hint in enumerate(hints):
+        delay = total * (i + 1) / (len(hints) + 1)
+        t = asyncio.create_task(riddle_hint_task(g, hint, i + 1, delay))
+        g["hint_tasks"].append(t)
+
+
+async def riddle_hint_task(g, hint, idx, delay):
+    try: await asyncio.sleep(delay)
+    except asyncio.CancelledError: return
+    if g.get("state") != "playing": return
+    await safe_send(g["group_id"],
+                    f"{E('clue','🔍')} <b>راهنما {idx}:</b>\n"
+                    f"<blockquote>{h(hint)}</blockquote>",
+                    parse_mode="html")
+
+
+async def riddle_timer(g):
+    """شمارش معکوس و آپدیت تایمر هر ۱۰ ثانیه"""
+    try:
+        total = g["timeout_sec"]
+        start = time.time()
+        last_update = 0
+        while True:
+            elapsed = time.time() - start
+            remaining = int(total - elapsed)
+            if remaining <= 0: break
+            if elapsed - last_update >= 10:
+                last_update = elapsed
+                try:
+                    bar = time_bar_colored(remaining, total)
+                    tb = time_badge(remaining, total)
+                    pct = int(100 * remaining / total)
+                    r = g["riddle"]
+                    text = (f"{E('detective','🕵️')} <b>مـعـمـای کـارآگـاهـی</b> {E('detective','🕵️')}\n"
+                            f"{DIV}\n\n"
+                            f"{E('fire','🔥')} <b>{h(r['title'])}</b>\n"
+                            f"{DIV2}\n\n"
+                            f"{E('book','📖')} <b>داستان:</b>\n"
+                            f"<blockquote>{h(r['story'])}</blockquote>\n\n"
+                            f"{E('target','🎯')} <b>سوال:</b>\n"
+                            f"<blockquote>{h(r['question'])}</blockquote>\n\n"
+                            f"{DIV2}\n"
+                            f"{tb} <b>زمان باقی‌مانده:</b> <code>{mmss(max(0, remaining))}</code>\n"
+                            f"{bar}  <b>{pct}%</b>\n"
+                            f"{DIV2}\n\n"
+                            f"{E('info','ℹ️')} <i>ریپلای کن و جوابت رو بنویس</i> {E('point','👇')}\n"
+                            f"{E('user','👤')} <b>پاسخ‌ها:</b> <code>{len(g['answers'])}</code>")
+                    await safe_edit_msg(g["group_id"], g["message_id"], text)
+                except Exception as e: logger.warning(f"rd timer edit: {e}")
+            await asyncio.sleep(2)
+        # زمان تموم شد
+        if g.get("state") == "playing":
+            await riddle_finish(g)
+    except asyncio.CancelledError: return
+    except Exception as e: logger.exception(f"rd timer err: {e}")
+
+
+async def riddle_finish(g):
+    if g.get("state") != "playing": return
+    g["state"] = "analyzing"
+    for t in g.get("hint_tasks", []):
+        try: t.cancel()
+        except Exception: pass
+    gid = g["group_id"]; r = g["riddle"]
+    answers = g.get("answers", {})
+    # پیام زمان تموم شد
+    await safe_send(gid,
+                    f"{E('hourglass','⏰')} <b>وقت تموم شد!</b>\n"
+                    f"{E('brain','🧠')} <i>هوش مصنوعی کارآگاه در حال تحلیل پاسخ‌هاست...</i>",
+                    parse_mode="html")
+    # نمایش جواب درست
+    await safe_send(gid,
+                    f"{E('check','✅')} <b>جواب درست:</b>\n"
+                    f"<blockquote>{h(r['answer'])}</blockquote>",
+                    parse_mode="html")
+    await asyncio.sleep(1)
+    if not answers:
+        await safe_send(gid,
+                        f"{E('info','ℹ️')} <b>هیچ‌کس جواب نداد!</b>\n"
+                        f"{E('magic','✨')} <i>دفعه بعد سریع‌تر باش</i>",
+                        parse_mode="html")
+        RIDDLE_ACTIVE_GAMES.pop(gid, None); return
+    # آماده‌سازی لیست
+    answers_list = []
+    for i, (uid, info) in enumerate(answers.items(), 1):
+        answers_list.append({"idx": i, "user_id": uid, "name": info["name"],
+                             "username": info.get("username"), "answer": info["answer"]})
+    # در حال تحلیل
+    wm = await safe_send(gid, f"{E('brain','🧠')} <b>تحلیل کارآگاهی در جریان...</b>\n"
+                              f"{E('bolt','⚡')} <i>چند لحظه صبر کنید...</i>",
+                          parse_mode="html")
+    result = await ai_analyze_riddle_answers(r, answers_list)
+    try: await wm.delete()
+    except Exception: pass
+    # ساخت متن تحلیل نهایی
+    lines = [f"{E('detective','🕵️')} <b>گزارش نهایی کارآگاه</b> {E('detective','🕵️')}\n{DIV}\n"]
+    analyses = {a.get("idx"): a for a in result.get("analyses", []) if isinstance(a, dict)}
+    winner_idx = result.get("winner_idx", 0)
+    medals = ["🥇", "🥈", "🥉"]
+    # مرتب‌سازی بر اساس امتیاز
+    scored = []
+    for a in answers_list:
+        aidx = a["idx"]
+        an = analyses.get(aidx, {})
+        score = int(an.get("score", 0) or 0)
+        verdict = an.get("verdict", "wrong")
+        reason = an.get("reason", "تحلیلی موجود نیست.")
+        scored.append({"idx": aidx, "user": a, "score": score,
+                       "verdict": verdict, "reason": reason, "is_winner": aidx == winner_idx})
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    for i, s in enumerate(scored):
+        u = s["user"]; a = s
+        em = {10: "🏆", 7: "🥈", 5: "🥉"}.get(a["score"], "🎖")
+        v_emoji = {"correct": E('check', '✅'), "close": E('warning', '⚠️'),
+                   "wrong": E('cross', '❌')}.get(a["verdict"], E('cross', '❌'))
+        v_label = {"correct": "کاملاً درست", "close": "نزدیک بود", "wrong": "اشتباه"}.get(a["verdict"], "—")
+        crown = f" {E('crown','👑')}" if a["is_winner"] else ""
+        un = f"@{u['username']}" if u.get("username") else "—"
+        lines.append(
+            f"\n{E('fire','🔥')} <b>#{i+1}</b> {v_emoji} <b>{h(u['name'])}</b>{crown}\n"
+            f"├ {E('id','🆔')} <a href=\"tg://user?id={u['user_id']}\">{u['user_id']}</a>\n"
+            f"├ {E('link','🔗')} {h(un)}\n"
+            f"├ {E('star','⭐')} امتیاز: <code>{a['score']}/10</code>\n"
+            f"├ {E('info','ℹ️')} وضعیت: <b>{v_label}</b>\n"
+            f"└ {E('brain','🧠')} <i>{h(a['reason'])}</i>"
+        )
+    lines.append(f"\n{DIV}\n{E('crown','👑')} <b>خلاصه نهایی:</b>\n")
+    lines.append(f"<blockquote>{h(result.get('summary', '—'))}</blockquote>")
+    # امتیاز به دیتابیس
+    for s in scored:
+        if s["score"] > 0:
+            try: db.add_points(s["user"]["user_id"], s["user"]["name"], s["score"], joined=True)
+            except Exception: pass
+    # ارسال
+    full = "\n".join(lines)
+    # تکه‌تکه بفرست اگه طولانیه
+    if len(full) > 4000:
+        for chunk_start in range(0, len(full), 3500):
+            await safe_send(gid, full[chunk_start:chunk_start+3500], parse_mode="html")
+            await asyncio.sleep(0.5)
+    else:
+        await safe_send(gid, full, parse_mode="html")
+    RIDDLE_ACTIVE_GAMES.pop(gid, None)
+
+
+# ═══════════════════════════════════════════════════════════
+# 📩 GROUP HANDLER
+# ═══════════════════════════════════════════════════════════
 @client.on(events.NewMessage())
 async def on_group_message(event):
     try:
@@ -2089,44 +2213,62 @@ async def on_group_message(event):
             except Exception: pass
         raw = (event.raw_text or "").strip()
 
-        # ═══════════════════════════════════════════
-        # 💖 EASTER EGG: مهراد + یاس = دو عشق دیرینه
-        # ═══════════════════════════════════════════
-        if ("مهراد" in raw and "یاس" in raw):
-            await safe_reply(event,
-                             f"{E('fire', '🔥')}  <b>دو عشق دیرینه</b>  {E('heart', '💖')}\n"
-                             f"{E('heart', '💖')}  <b>مهراد × یاس</b>  {E('fire', '🔥')}",
-                             parse_mode="html")
-            return
-        # اگه فقط یکی از اسم‌ها اومد
-        if raw in ("مهراد", "یاس", "مهراد یاس", "یاس مهراد"):
-            await safe_reply(event,
-                             f"{E('fire', '🔥')}  <b>دو عشق دیرینه</b>  {E('heart', '💖')}\n"
-                             f"{E('heart', '💖')}  <b>مهراد × یاس</b>  {E('fire', '🔥')}",
-                             parse_mode="html")
+        # 🕵️ جمع‌آوری پاسخ‌های معما (برای همه کاربران)
+        rid = RIDDLE_ACTIVE_GAMES.get(event.chat_id)
+        if rid and rid.get("state") == "playing" and rid.get("message_id") and event.reply_to_msg_id == rid["message_id"]:
+            if not raw: return
+            uid = event.sender_id
+            try:
+                s = await event.get_sender()
+                name = user_name(s); uu = getattr(s, "username", None)
+            except Exception:
+                name = str(uid); uu = None
+            rid["answers"][uid] = {"name": name, "username": uu,
+                                    "answer": raw[:800], "at": time.time()}
+            try: await event.reply(f"{E('check','✅')} <b>ثبت شد، {h(name)}!</b>",
+                                    parse_mode="html")
+            except Exception: pass
             return
 
+        # 💖 Easter egg
+        if ("مهراد" in raw and "یاس" in raw) or raw in ("مهراد", "یاس", "مهراد یاس", "یاس مهراد"):
+            await safe_reply(event,
+                             f"{E('fire','🔥')}  <b>دو عشق دیرینه</b>  {E('heart','💖')}\n"
+                             f"{E('heart','💖')}  <b>مهراد × یاس</b>  {E('fire','🔥')}",
+                             parse_mode="html")
+            return
         if "خلوته" in raw:
-            await safe_reply(event, f"{E('laugh', '😂')} <b>شیک بزن شلوغ بشه</b> {E('laugh', '😂')}",
+            await safe_reply(event, f"{E('laugh','😂')} <b>شیک بزن شلوغ بشه</b> {E('laugh','😂')}",
                              parse_mode="html")
             return
         if not is_admin(event.sender_id): return
+
         if raw in ("جرعت", "حقیقت", "جرعت حقیقت", "جرعت یا حقیقت"):
             uid = event.sender_id
             game = create_td_setup(uid, event.chat_id)
             await safe_reply(event,
-                             f"{E('check', '✅')} <b>منوی جرعت یا حقیقت به پیوی شما فرستاده شد</b>\n"
-                             f"{DIV}\n\n{E('magic', '🎭')} تنظیمات رو توی پیوی انجام بده.",
+                             f"{E('check','✅')} <b>منوی جرعت یا حقیقت به پیوی فرستاده شد</b>\n"
+                             f"{DIV}\n\n{E('magic','🎭')} تنظیمات رو توی پیوی انجام بده.",
                              parse_mode="html")
             try: await td_send_setup_menu(uid, "welcome", game)
             except Exception as e: logger.exception(f"td setup: {e}")
+            return
+        if raw in ("معما", "معما جدید", "پازل", "پازل جدید"):
+            uid = event.sender_id
+            game = create_riddle_setup(uid, event.chat_id)
+            await safe_reply(event,
+                             f"{E('check','✅')} <b>منوی معما به پیوی فرستاده شد</b>\n"
+                             f"{DIV}\n\n{E('detective','🕵️')} تنظیمات رو توی پیوی انجام بده.",
+                             parse_mode="html")
+            try: await riddle_send_setup_menu(uid, "welcome", game)
+            except Exception as e: logger.exception(f"rd setup: {e}")
             return
         if raw in ("چالش", "چالش جدید", "کوییز", "کوییز جدید"):
             uid = event.sender_id
             game = create_setup_game(uid, event.chat_id)
             await safe_reply(event,
-                             f"{E('check', '✅')} <b>منوی کوییز به پیوی شما فرستاده شد</b>\n"
-                             f"{DIV}\n\n{E('brain', '🧠')} تنظیمات رو توی پیوی انجام بده.",
+                             f"{E('check','✅')} <b>منوی کوییز به پیوی فرستاده شد</b>\n"
+                             f"{DIV}\n\n{E('brain','🧠')} تنظیمات رو توی پیوی انجام بده.",
                              parse_mode="html")
             try: await quiz_send_setup_menu(uid, "welcome", game)
             except Exception as e: logger.exception(f"quiz setup: {e}")
@@ -2135,9 +2277,8 @@ async def on_group_message(event):
             content = raw[len("نظرسنجی"):].strip().lstrip(":").lstrip("：").strip()
             parts = [p.strip() for p in content.split("|") if p.strip()]
             if len(parts) < 3:
-                await safe_reply(event, f"{E('warning', '⚠️')} <code>نظرسنجی: عنوان | گ1 | گ2</code>",
-                                 parse_mode="html")
-                return
+                await safe_reply(event, f"{E('warning','⚠️')} <code>نظرسنجی: عنوان | گ1 | گ2</code>",
+                                 parse_mode="html"); return
             title = parts[0]; options = parts[1:]; deadline = None
             last = parts[-1]
             if len(parts) > 3 and re.match(r"^\d+\s*(m|min|h|hr|d|day|د|دقیقه|س|ساعت|روز)?$", last):
@@ -2146,8 +2287,7 @@ async def on_group_message(event):
                     deadline = (datetime.now(IRAN_TZ) + maybe).isoformat()
                     options = parts[1:-1]
             if len(options) < 2:
-                await safe_reply(event, f"{E('cross', '❌')} حداقل ۲ گزینه!", parse_mode="html")
-                return
+                await safe_reply(event, f"{E('cross','❌')} حداقل ۲ گزینه!", parse_mode="html"); return
             cid = db.create_challenge(event.sender_id, event.chat_id, title, "",
                                        ch_type="poll", options=options, deadline=deadline)
             link = f"https://t.me/{BOT_USERNAME}?start=ch_{cid}"
@@ -2160,9 +2300,8 @@ async def on_group_message(event):
             content = raw[len("چالش"):].strip().lstrip(":").lstrip("：").strip()
             parts = [p.strip() for p in content.split("|") if p.strip()]
             if len(parts) < 2:
-                await safe_reply(event, f"{E('warning', '⚠️')} <code>چالش: عنوان | سوال</code>",
-                                 parse_mode="html")
-                return
+                await safe_reply(event, f"{E('warning','⚠️')} <code>چالش: عنوان | سوال</code>",
+                                 parse_mode="html"); return
             title = parts[0]; question = parts[1]; deadline = None
             if len(parts) >= 3:
                 maybe = parse_duration(parts[2])
@@ -2198,10 +2337,10 @@ async def on_private(event):
                 try: target = int(payload[5:])
                 except ValueError: target = 0
                 if target == uid or target == 0:
-                    await safe_respond(event, f"{E('cross', '❌')} لینک نامعتبره", parse_mode="html"); return
+                    await safe_respond(event, f"{E('cross','❌')} لینک نامعتبره", parse_mode="html"); return
                 set_state(uid, "awaiting_anon", target=target)
                 await safe_respond(event,
-                                   f"{E('heart', '💌')} <b>پیام ناشناس</b>\n{DIV}\n\nپیامت رو بنویس:",
+                                   f"{E('heart','💌')} <b>پیام ناشناس</b>\n{DIV}\n\nپیامت رو بنویس:",
                                    parse_mode="html",
                                    buttons=[[Button.inline("❌ لغو", data=b"cancel")]])
                 return
@@ -2210,137 +2349,129 @@ async def on_private(event):
                 except ValueError: cid = 0
                 ch = db.get_challenge(cid)
                 if not ch or not ch.get("is_active"):
-                    await safe_respond(event, f"{E('cross', '❌')} چالش یافت نشد یا بسته شده",
-                                       parse_mode="html")
-                    return
+                    await safe_respond(event, f"{E('cross','❌')} چالش یافت نشد یا بسته شده",
+                                       parse_mode="html"); return
                 ct = ch.get("ch_type") or "text"
                 if ct == "poll":
                     if db.has_voted(cid, uid):
-                        await safe_respond(event, f"{E('info', 'ℹ️')} قبلاً رأی دادی", parse_mode="html"); return
+                        await safe_respond(event, f"{E('info','ℹ️')} قبلاً رأی دادی", parse_mode="html"); return
                     opts = json.loads(ch["options"]) if ch.get("options") else []
-                    ol = "\n".join([f"  {E('point', '👉')} <b>{i+1}.</b> {h(o)}"
-                                    for i, o in enumerate(opts)])
-                    txt = (f"{E('chart', '📊')} <b>نظرسنجی ناشناس</b>\n{DIV}\n\n"
-                           f"{E('tag', '🏷️')} <b>عنوان:</b> {h(ch['title'])}\n\n"
-                           f"{E('list', '📋')} <b>گزینه‌ها:</b>\n{ol}\n\n"
-                           f"{E('rocket', '🚀')} یک گزینه انتخاب کن:")
+                    ol = "\n".join([f"  {E('point','👉')} <b>{i+1}.</b> {h(o)}" for i, o in enumerate(opts)])
+                    txt = (f"{E('chart','📊')} <b>نظرسنجی ناشناس</b>\n{DIV}\n\n"
+                           f"{E('tag','🏷️')} <b>عنوان:</b> {h(ch['title'])}\n\n"
+                           f"{E('list','📋')} <b>گزینه‌ها:</b>\n{ol}\n\n"
+                           f"{E('rocket','🚀')} یک گزینه انتخاب کن:")
                     btns = [[Button.inline(f"◽ {o[:30]}", data=f"vote:{cid}:{i}".encode())]
                             for i, o in enumerate(opts)]
                     btns.append([Button.inline("❌ لغو", data=b"cancel")])
-                    await safe_respond(event, txt, buttons=btns, parse_mode="html")
-                    return
+                    await safe_respond(event, txt, buttons=btns, parse_mode="html"); return
                 if db.has_answered(cid, uid):
-                    await safe_respond(event, f"{E('info', 'ℹ️')} قبلاً شرکت کردی", parse_mode="html"); return
-                txt = (f"{E('diamond', '💎')} <b>چالش ناشناس</b>\n{DIV}\n\n"
-                       f"{E('tag', '🏷️')} <b>عنوان:</b> {h(ch['title'])}\n\n"
-                       f"{E('message', '💬')} <b>سوال:</b> {h(ch['question'])}\n\n"
-                       f"{E('alert', '⚠️')} شرکت می‌کنی؟")
+                    await safe_respond(event, f"{E('info','ℹ️')} قبلاً شرکت کردی", parse_mode="html"); return
+                txt = (f"{E('diamond','💎')} <b>چالش ناشناس</b>\n{DIV}\n\n"
+                       f"{E('tag','🏷️')} <b>عنوان:</b> {h(ch['title'])}\n\n"
+                       f"{E('message','💬')} <b>سوال:</b> {h(ch['question'])}\n\n"
+                       f"{E('alert','⚠️')} شرکت می‌کنی؟")
                 btns = [[Button.inline("✅ بله", data=f"join:{cid}".encode()),
                          Button.inline("❌ لغو", data=b"cancel")]]
-                await safe_respond(event, txt, buttons=btns, parse_mode="html")
-                return
+                await safe_respond(event, txt, buttons=btns, parse_mode="html"); return
             if is_admin(uid): await send_admin_menu(event)
             else:
                 await safe_respond(event,
-                                   f"{E('crown', '👑')} <b>UNICORN ANONY BOT</b>\n{DIV}\n\n"
-                                   f"{E('wave', '👋')} سلام!\n\n"
-                                   f"{E('brain', '🧠')} کوییز هوشمند + {E('magic', '🎭')} جرعت حقیقت\n"
-                                   f"{E('diamond', '💎')} چالش ناشناس\n"
-                                   f"{E('heart', '💌')} پیام ناشناس\n\n"
-                                   f"{E('info', 'ℹ️')} /help",
-                                   parse_mode="html")
+                                   f"{E('crown','👑')} <b>UNICORN ANONY BOT</b>\n{DIV}\n\n"
+                                   f"{E('wave','👋')} سلام!\n\n"
+                                   f"{E('brain','🧠')} کوییز هوشمند + {E('magic','🎭')} جرعت حقیقت\n"
+                                   f"{E('detective','🕵️')} بازی معما\n"
+                                   f"{E('diamond','💎')} چالش ناشناس\n"
+                                   f"{E('heart','💌')} پیام ناشناس\n\n"
+                                   f"{E('info','ℹ️')} /help", parse_mode="html")
             return
 
         if raw == "/help":
-            await safe_respond(event, f"{E('info', 'ℹ️')} /me /top /mylink /help", parse_mode="html"); return
+            await safe_respond(event, f"{E('info','ℹ️')} /me /top /mylink /help", parse_mode="html"); return
         if raw == "/me":
             sc = db.get_score(uid) or {}
             rank = db.get_rank(uid); nr = db.count_anon_received(uid)
             await safe_respond(event,
-                               f"{E('user', '👤')} <b>پروفایل</b>\n{DIV}\n\n"
-                               f"{E('tag', '🏷️')} {h(uname)}\n"
-                               f"{E('id', '🆔')} <code>{uid}</code>\n\n"
-                               f"{E('star', '⭐')} امتیاز: <code>{sc.get('points', 0)}</code>\n"
-                               f"{E('diamond', '💎')} چالش‌ها: <code>{sc.get('challenges_joined', 0)}</code>\n"
-                               f"{E('heart', '💌')} پیام ناشناس: <code>{nr}</code>\n"
-                               f"{E('trophy', '🏆')} رتبه: {('#' + str(rank)) if rank else '—'}",
+                               f"{E('user','👤')} <b>پروفایل</b>\n{DIV}\n\n"
+                               f"{E('tag','🏷️')} {h(uname)}\n"
+                               f"{E('id','🆔')} <code>{uid}</code>\n\n"
+                               f"{E('star','⭐')} امتیاز: <code>{sc.get('points', 0)}</code>\n"
+                               f"{E('diamond','💎')} چالش‌ها: <code>{sc.get('challenges_joined', 0)}</code>\n"
+                               f"{E('heart','💌')} پیام ناشناس: <code>{nr}</code>\n"
+                               f"{E('trophy','🏆')} رتبه: {('#' + str(rank)) if rank else '—'}",
                                parse_mode="html")
             return
         if raw == "/top":
             top = db.get_top(10)
             if not top:
-                await safe_respond(event, f"{E('info', 'ℹ️')} خالیه", parse_mode="html"); return
+                await safe_respond(event, f"{E('info','ℹ️')} خالیه", parse_mode="html"); return
             medals = ["🥇", "🥈", "🥉"] + ["🎖"] * 7
-            lines = [f"{E('trophy', '🏆')} <b>لیدربورد</b>\n{DIV}\n"]
+            lines = [f"{E('trophy','🏆')} <b>لیدربورد</b>\n{DIV}\n"]
             for i, u in enumerate(top):
                 m = medals[i] if i < len(medals) else "•"
                 lines.append(f"{m} <b>{h(u['user_name'] or 'ناشناس')}</b> — <code>{u['points']}</code>")
-            await safe_respond(event, "\n".join(lines), parse_mode="html")
-            return
+            await safe_respond(event, "\n".join(lines), parse_mode="html"); return
         if raw == "/mylink":
             link = f"https://t.me/{BOT_USERNAME}?start=anon_{uid}"
             n = db.count_anon_received(uid)
             await safe_respond(event,
-                               f"{E('heart', '💌')} <b>لینک NGL</b>\n{DIV}\n\n<code>{link}</code>\n\n"
-                               f"{E('stats', '📊')} دریافتی: <code>{n}</code>",
+                               f"{E('heart','💌')} <b>لینک NGL</b>\n{DIV}\n\n<code>{link}</code>\n\n"
+                               f"{E('stats','📊')} دریافتی: <code>{n}</code>",
                                parse_mode="html",
-                               buttons=[
-                                   [Button.url("📤 اشتراک", f"https://t.me/share/url?url={link}")],
-                                   [Button.inline("📥 صندوق", data=b"anon_inbox")],
-                               ])
+                               buttons=[[Button.url("📤 اشتراک", f"https://t.me/share/url?url={link}")],
+                                        [Button.inline("📥 صندوق", data=b"anon_inbox")]])
             return
         if raw == "/stats" and is_admin(uid):
             al = "، ".join([f"<code>{x}</code>" for x in sorted(ALL_ADMINS)])
             await safe_respond(event,
-                               f"{E('stats', '📊')} <b>آمار</b>\n{DIV}\n\n"
-                               f"{E('group', '🏢')} گروه‌ها: <code>{len(db.get_groups())}</code>\n"
-                               f"{E('user', '👤')} کاربران: <code>{db.count_users()}</code>\n"
-                               f"{E('diamond', '💎')} چالش‌ها: <code>{len(db.get_challenges())}</code>\n"
-                               f"{E('fire', '🔥')} فعال: <code>{db.count_active_challenges()}</code>\n\n"
-                               f"{E('crown', '👑')} <b>ادمین‌ها:</b>\n{al}",
+                               f"{E('stats','📊')} <b>آمار</b>\n{DIV}\n\n"
+                               f"{E('group','🏢')} گروه‌ها: <code>{len(db.get_groups())}</code>\n"
+                               f"{E('user','👤')} کاربران: <code>{db.count_users()}</code>\n"
+                               f"{E('diamond','💎')} چالش‌ها: <code>{len(db.get_challenges())}</code>\n"
+                               f"{E('fire','🔥')} فعال: <code>{db.count_active_challenges()}</code>\n\n"
+                               f"{E('crown','👑')} <b>ادمین‌ها:</b>\n{al}",
                                parse_mode="html")
             return
         if raw == "/broadcast" and is_admin(uid):
             set_state(uid, "awaiting_broadcast")
-            await safe_respond(event, f"{E('message', '💬')} پیام برادکست رو بفرست:",
+            await safe_respond(event, f"{E('message','💬')} پیام برادکست رو بفرست:",
                                parse_mode="html",
                                buttons=[[Button.inline("❌ لغو", data=b"cancel")]])
             return
         if raw.startswith("/search") and is_admin(uid):
             parts = raw.split(None, 1)
             if len(parts) < 2:
-                await safe_respond(event, f"{E('search', '🔍')} <code>/search کلمه</code>", parse_mode="html"); return
+                await safe_respond(event, f"{E('search','🔍')} <code>/search کلمه</code>",
+                                   parse_mode="html"); return
             res = db.search_challenges(uid, parts[1].strip())
             if not res:
-                await safe_respond(event, f"{E('info', 'ℹ️')} نتیجه‌ای نیس", parse_mode="html"); return
-            lines = [f"{E('search', '🔍')} نتایج:\n"]
+                await safe_respond(event, f"{E('info','ℹ️')} نتیجه‌ای نیس", parse_mode="html"); return
+            lines = [f"{E('search','🔍')} نتایج:\n"]
             for c_ in res[:10]:
-                lines.append(f"{E('diamond', '💎')} <b>#{c_['id']}</b> {h(c_['title'])}")
-            await safe_respond(event, "\n".join(lines), parse_mode="html")
-            return
+                lines.append(f"{E('diamond','💎')} <b>#{c_['id']}</b> {h(c_['title'])}")
+            await safe_respond(event, "\n".join(lines), parse_mode="html"); return
 
         st = get_state(uid)
         if st:
             state = st.get("state"); data = st.get("data", {})
             if state == "awaiting_anon":
                 if not raw or len(raw) > MAX_ANSWER_LEN:
-                    await safe_respond(event, f"{E('warning', '⚠️')} پیام نامعتبره", parse_mode="html"); return
+                    await safe_respond(event, f"{E('warning','⚠️')} پیام نامعتبره", parse_mode="html"); return
                 target = data.get("target")
                 if not target: clear_state(uid); return
                 db.save_anon(target, uid, raw)
-                db.add_points(target, "", 5, ngl=True)
-                db.add_points(uid, uname, 2, sent=True)
+                db.add_points(target, "", 5, ngl=True); db.add_points(uid, uname, 2, sent=True)
                 clear_state(uid)
                 await safe_respond(event,
-                                   f"{E('check', '✅')} ارسال شد!\n{E('shield', '🛡')} هویتت مخفی موند",
+                                   f"{E('check','✅')} ارسال شد!\n{E('shield','🛡')} هویتت مخفی موند",
                                    parse_mode="html")
                 try:
                     n = db.count_anon_received(target)
                     await safe_send(target,
-                                    f"{E('heart', '💌')} <b>پیام ناشناس جدید!</b>\n{DIV}\n\n"
+                                    f"{E('heart','💌')} <b>پیام ناشناس جدید!</b>\n{DIV}\n\n"
                                     f"<blockquote>{h(raw)}</blockquote>\n\n"
-                                    f"{E('stats', '📊')} کل: <code>{n}</code>\n"
-                                    f"{E('time', '⏱')} {now_str()}",
+                                    f"{E('stats','📊')} کل: <code>{n}</code>\n"
+                                    f"{E('time','⏱')} {now_str()}",
                                     parse_mode="html",
                                     buttons=[[Button.inline("📥 صندوق", data=b"anon_inbox")]])
                 except Exception: pass
@@ -2348,21 +2479,19 @@ async def on_private(event):
             if state == "awaiting_broadcast":
                 clear_state(uid)
                 uids = db.get_all_users()
-                await safe_respond(event, f"{E('rocket', '🚀')} ارسال به {len(uids)} کاربر...",
+                await safe_respond(event, f"{E('rocket','🚀')} ارسال به {len(uids)} کاربر...",
                                    parse_mode="html")
                 sent, failed = 0, 0
                 for i, u in enumerate(uids):
-                    try:
-                        await safe_send(u, raw, parse_mode="html"); sent += 1
+                    try: await safe_send(u, raw, parse_mode="html"); sent += 1
                     except FloodWaitError as fwe:
                         await asyncio.sleep(fwe.seconds + 1)
-                        try:
-                            await safe_send(u, raw, parse_mode="html"); sent += 1
+                        try: await safe_send(u, raw, parse_mode="html"); sent += 1
                         except Exception: failed += 1
                     except Exception: failed += 1
                     if i % 25 == 24: await asyncio.sleep(1.2)
                 await safe_respond(event,
-                                   f"{E('check', '✅')} تمام شد\n"
+                                   f"{E('check','✅')} تمام شد\n"
                                    f"ارسال: <code>{sent}</code> | ناموفق: <code>{failed}</code>",
                                    parse_mode="html")
                 return
@@ -2372,219 +2501,259 @@ async def on_private(event):
                 ct = data.get("type", "text")
                 set_state(uid, "awaiting_question" if ct == "text" else "awaiting_options", **data)
                 if ct == "text":
-                    await safe_respond(event, f"{E('message', '💬')} سوال رو بفرست:",
+                    await safe_respond(event, f"{E('message','💬')} سوال رو بفرست:",
                                        parse_mode="html",
                                        buttons=[[Button.inline("❌ لغو", data=b"cancel")]])
                 else:
-                    await safe_respond(event, f"{E('list', '📋')} گزینه‌ها با <code>|</code>:",
+                    await safe_respond(event, f"{E('list','📋')} گزینه‌ها با <code>|</code>:",
                                        parse_mode="html",
                                        buttons=[[Button.inline("❌ لغو", data=b"cancel")]])
                 return
             if state == "awaiting_question":
                 if not raw: return
                 data["question"] = raw[:800]
-                set_state(uid, "awaiting_deadline", **data)
-                await _ask_deadline(event); return
+                set_state(uid, "awaiting_deadline", **data); await _ask_deadline(event); return
             if state == "awaiting_options":
                 opts = [p.strip() for p in raw.split("|") if p.strip()]
                 if len(opts) < 2:
-                    await safe_respond(event, f"{E('warning', '⚠️')} حداقل ۲ گزینه!", parse_mode="html"); return
+                    await safe_respond(event, f"{E('warning','⚠️')} حداقل ۲ گزینه!", parse_mode="html"); return
                 data["options"] = opts[:10]
-                set_state(uid, "awaiting_deadline", **data)
-                await _ask_deadline(event); return
+                set_state(uid, "awaiting_deadline", **data); await _ask_deadline(event); return
             if state == "awaiting_deadline":
                 td = parse_duration(raw)
                 if td is None and raw not in ("", "-", "ندارد", "بدون", "skip"):
-                    await safe_respond(event, f"{E('warning', '⚠️')} فرمت اشتباه", parse_mode="html"); return
+                    await safe_respond(event, f"{E('warning','⚠️')} فرمت اشتباه", parse_mode="html"); return
                 dl = (datetime.now(IRAN_TZ) + td).isoformat() if td else None
                 data["deadline"] = dl
-                set_state(uid, "awaiting_group", **data)
-                await _ask_group(event, data); return
+                set_state(uid, "awaiting_group", **data); await _ask_group(event, data); return
             if state == "awaiting_answer":
                 cid = data.get("challenge_id")
                 ch = db.get_challenge(cid) if cid else None
                 if not ch:
                     clear_state(uid)
-                    await safe_respond(event, f"{E('cross', '❌')} چالش یافت نشد", parse_mode="html"); return
+                    await safe_respond(event, f"{E('cross','❌')} چالش یافت نشد", parse_mode="html"); return
                 if not raw or len(raw) > MAX_ANSWER_LEN:
-                    await safe_respond(event, f"{E('warning', '⚠️')} پاسخ نامعتبره", parse_mode="html"); return
+                    await safe_respond(event, f"{E('warning','⚠️')} پاسخ نامعتبره", parse_mode="html"); return
                 db.save_answer(cid, uid, uname, username, raw)
                 db.add_points(uid, uname, 10, joined=True)
                 clear_state(uid)
                 await safe_respond(event,
-                                   f"{E('check', '✅')} ثبت شد!\n{E('star', '⭐')} +۱۰ امتیاز",
+                                   f"{E('check','✅')} ثبت شد!\n{E('star','⭐')} +۱۰ امتیاز",
                                    parse_mode="html")
                 try:
                     await safe_send(ch["admin_id"],
-                                    f"{E('alert', '🚨')} <b>پاسخ جدید!</b>\n{DIV}\n\n"
-                                    f"{E('diamond', '💎')} {h(ch['title'])}\n"
-                                    f"{E('user', '👤')} {h(uname)}\n"
-                                    f"{E('id', '🆔')} <a href=\"tg://user?id={uid}\">{uid}</a>\n\n"
-                                    f"<blockquote>{h(raw)}</blockquote>",
-                                    parse_mode="html")
+                                    f"{E('alert','🚨')} <b>پاسخ جدید!</b>\n{DIV}\n\n"
+                                    f"{E('diamond','💎')} {h(ch['title'])}\n"
+                                    f"{E('user','👤')} {h(uname)}\n"
+                                    f"{E('id','🆔')} <a href=\"tg://user?id={uid}\">{uid}</a>\n\n"
+                                    f"<blockquote>{h(raw)}</blockquote>", parse_mode="html")
                 except Exception: pass
                 return
 
         if is_admin(uid): await send_admin_menu(event)
         else:
             await safe_respond(event,
-                               f"{E('info', 'ℹ️')} برای شرکت در بازی‌ها از دکمه‌های گروه استفاده کن.\n"
-                               f"{E('rocket', '🚀')} /help",
-                               parse_mode="html")
+                               f"{E('info','ℹ️')} برای شرکت در بازی‌ها از دکمه‌های گروه استفاده کن.\n"
+                               f"{E('rocket','🚀')} /help", parse_mode="html")
     except Exception as ex: logger.exception(f"pm handler: {ex}")
 
 
 async def _ask_deadline(event):
     await safe_respond(event,
-                       f"{E('hourglass', '⏳')} <b>مهلت</b>\n{DIV}\n\n"
+                       f"{E('hourglass','⏳')} <b>مهلت</b>\n{DIV}\n\n"
                        f"مثال: <code>30</code>, <code>2h</code>, <code>1d</code>",
                        parse_mode="html",
-                       buttons=[
-                           [Button.inline("⏰ ۳۰ دقیقه", data=b"dl:30"),
-                            Button.inline("⏰ ۱ ساعت", data=b"dl:60")],
-                           [Button.inline("⏰ ۶ ساعت", data=b"dl:360"),
-                            Button.inline("⏰ ۱ روز", data=b"dl:1440")],
-                           [Button.inline("🚫 بدون", data=b"dl:none"),
-                            Button.inline("❌ لغو", data=b"cancel")],
-                       ])
+                       buttons=[[Button.inline("⏰ ۳۰ دقیقه", data=b"dl:30"),
+                                 Button.inline("⏰ ۱ ساعت", data=b"dl:60")],
+                                [Button.inline("⏰ ۶ ساعت", data=b"dl:360"),
+                                 Button.inline("⏰ ۱ روز", data=b"dl:1440")],
+                                [Button.inline("🚫 بدون", data=b"dl:none"),
+                                 Button.inline("❌ لغو", data=b"cancel")]])
 
 
 async def _ask_group(event, data):
     groups = db.get_groups()
     if not groups:
-        await safe_respond(event, f"{E('cross', '❌')} گروهی یافت نشد", parse_mode="html")
+        await safe_respond(event, f"{E('cross','❌')} گروهی یافت نشد", parse_mode="html")
         clear_state(event.sender_id); return
     btns = [[Button.inline(f"🏢 {(g.get('title') or '—')[:40]}",
-                           data=f"chgrp:{g['group_id']}".encode())] for g in groups[:20]]
+                            data=f"chgrp:{g['group_id']}".encode())] for g in groups[:20]]
     btns.append([Button.inline("❌ لغو", data=b"cancel")])
-    await safe_respond(event, f"{E('group', '🏢')} کدوم گروه؟", buttons=btns, parse_mode="html")
+    await safe_respond(event, f"{E('group','🏢')} کدوم گروه؟", buttons=btns, parse_mode="html")
 
 
+# ═══════════════════════════════════════════════════════════
+# 📞 CALLBACK HANDLER
+# ═══════════════════════════════════════════════════════════
 @client.on(events.CallbackQuery())
 async def on_cb(event):
     try:
         uid = event.sender_id
         data = event.data.decode("utf-8", "ignore")
 
+        # ═══ RIDDLE ═══
+        if data == "rd_setup":
+            g = RIDDLE_SETUP_GAMES.get(uid)
+            if not g: await event.answer("منقضی", alert=True); return
+            await event.answer()
+            text, btns = render_riddle_categories(g)
+            await safe_edit(event, text, buttons=btns, parse_mode="html"); return
+        if data == "rd_noop":
+            await event.answer(); return
+        if data.startswith("rd_cat:"):
+            g = RIDDLE_SETUP_GAMES.get(uid)
+            if not g: await event.answer("منقضی", alert=True); return
+            k = data.split(":", 1)[1]
+            if k in g["categories"]: g["categories"].remove(k); await event.answer("➖")
+            else: g["categories"].append(k); await event.answer("✅")
+            text, btns = render_riddle_categories(g)
+            await safe_edit(event, text, buttons=btns, parse_mode="html"); return
+        if data == "rd_backcat":
+            g = RIDDLE_SETUP_GAMES.get(uid)
+            if not g: await event.answer("منقضی", alert=True); return
+            await event.answer()
+            text, btns = render_riddle_categories(g)
+            await safe_edit(event, text, buttons=btns, parse_mode="html"); return
+        if data == "rd_settings":
+            g = RIDDLE_SETUP_GAMES.get(uid)
+            if not g or not g["categories"]:
+                await event.answer("اول دسته", alert=True); return
+            await event.answer()
+            text, btns = render_riddle_settings(g)
+            await safe_edit(event, text, buttons=btns, parse_mode="html"); return
+        if data.startswith("rd_time:"):
+            g = RIDDLE_SETUP_GAMES.get(uid)
+            if not g: await event.answer("منقضی", alert=True); return
+            g["timeout_sec"] = int(data.split(":", 1)[1])
+            await event.answer(f"✅ {mmss(g['timeout_sec'])}")
+            text, btns = render_riddle_settings(g)
+            await safe_edit(event, text, buttons=btns, parse_mode="html"); return
+        if data == "rd_summary":
+            g = RIDDLE_SETUP_GAMES.get(uid)
+            if not g: await event.answer("منقضی", alert=True); return
+            await event.answer()
+            text, btns = render_riddle_summary(g)
+            await safe_edit(event, text, buttons=btns, parse_mode="html"); return
+        if data == "rd_cancel":
+            RIDDLE_SETUP_GAMES.pop(uid, None)
+            await event.answer("❌")
+            try: await safe_edit(event, f"{E('cross','❌')} لغو شد", parse_mode="html", buttons=None)
+            except Exception: pass
+            return
+        if data == "rd_create":
+            g = RIDDLE_SETUP_GAMES.get(uid)
+            if not g: await event.answer("منقضی", alert=True); return
+            await event.answer("🧠 در حال ساخت معما...")
+            try:
+                await safe_edit(event,
+                                f"{E('brain','🧠')} <b>در حال ساخت معمای کارآگاهی...</b>\n"
+                                f"{E('bolt','⚡')} <i>چند لحظه صبر کن...</i>",
+                                parse_mode="html", buttons=None)
+            except Exception: pass
+            cat_key = random.choice(g["categories"])
+            cat_name = next((n for k, e, n in RIDDLE_CATEGORIES if k == cat_key), cat_key)
+            r = await ai_generate_riddle(cat_name, g["difficulty"])
+            if not r:
+                await safe_edit(event, f"{E('cross','❌')} خطا در ساخت معما. دوباره تلاش کن.",
+                                parse_mode="html", buttons=None); return
+            g["riddle"] = r
+            RIDDLE_SETUP_GAMES.pop(uid, None)
+            try:
+                await safe_edit(event,
+                                f"{E('check','✅')} <b>معما ساخته شد!</b>\n{DIV}\n\n"
+                                f"{E('fire','🔥')} <b>{h(r['title'])}</b>\n"
+                                f"{E('info','ℹ️')} توی گروه پست می‌شه...",
+                                parse_mode="html", buttons=None)
+            except Exception: pass
+            await riddle_broadcast(g); return
+
+        # ═══ TD / QUIZ / سایر ═══
         if data == "quiz_join":
             g = _find_game_for_callback(event)
             if not g: await event.answer("❌ بازی پیدا نشد!", alert=True); return
-            if g.get("state") != "waiting":
-                await event.answer("⏳ بازی شروع شده!", alert=True); return
-            if uid in g["players"]:
-                await event.answer("⚠️ قبلاً شرکت کردی!", alert=True); return
+            if g.get("state") != "waiting": await event.answer("⏳ شروع شده!", alert=True); return
+            if uid in g["players"]: await event.answer("⚠️ قبلاً شرکت کردی!", alert=True); return
             try:
                 s = await event.get_sender()
                 name = user_name(s); uu = getattr(s, "username", None)
-            except Exception:
-                name = str(uid); uu = None
-            g["players"][uid] = {"name": name, "username": uu, "score": 0, "asked": 0,
-                                  "joined_at": now_iso()}
-            await event.answer(f"✅ {name} عزیز، ثبت شد!")
+            except Exception: name = str(uid); uu = None
+            g["players"][uid] = {"name": name, "username": uu, "score": 0, "asked": 0, "joined_at": now_iso()}
+            await event.answer(f"✅ {name} ثبت شد!")
             try: await quiz_refresh_join(g)
             except Exception as e: logger.exception(f"quiz refresh: {e}")
             return
-
         if data == "quiz_start":
             g = _find_game_for_callback(event)
             if not g or g.get("state") != "waiting":
                 await event.answer("❌ بازی فعال نیست!", alert=True); return
-            if not is_admin(uid):
-                await event.answer("⛔ فقط ادمین!", alert=True); return
-            if len(g["players"]) < 1:
-                await event.answer("⚠️ حداقل ۱ بازیکن!", alert=True); return
-            await event.answer("🚀 شروع!")
+            if not is_admin(uid): await event.answer("⛔ فقط ادمین!", alert=True); return
+            if len(g["players"]) < 1: await event.answer("⚠️ حداقل ۱ بازیکن!", alert=True); return
+            await event.answer("🚀")
             try:
                 if g.get("join_msg_id"):
                     await client.edit_message(g["group_id"], g["join_msg_id"],
-                        text=(f"{E('check', '✅')} <b>بازی شروع شد!</b>\n"
-                              f"{E('user', '👤')} <b>{len(g['players'])}</b> بازیکن"),
+                        text=(f"{E('check','✅')} <b>بازی شروع شد!</b>\n"
+                              f"{E('user','👤')} <b>{len(g['players'])}</b> بازیکن"),
                         parse_mode="html", buttons=None)
             except Exception: pass
             asyncio.create_task(quiz_start_game(g)); return
-
         if data.startswith("quiz_pick:"):
             try: idx = int(data.split(":", 1)[1])
             except Exception: await event.answer("خطا", alert=True); return
             g = _find_game_for_callback(event)
-            if not g or g.get("state") != "playing":
-                await event.answer("❌", alert=True); return
-            if g.get("current_player") != uid:
-                await event.answer("⛔ نوبت تو نیست!", alert=True); return
-            if g.get("current_state") != "picking_category":
-                await event.answer("الان نمیشه", alert=True); return
+            if not g or g.get("state") != "playing": await event.answer("❌", alert=True); return
+            if g.get("current_player") != uid: await event.answer("⛔ نوبت تو نیست!", alert=True); return
+            if g.get("current_state") != "picking_category": await event.answer("الان نمیشه", alert=True); return
             await event.answer(f"🎯 {QUIZ_CATEGORIES[idx][2]}")
             asyncio.create_task(quiz_ask_question(g, uid, idx)); return
-
         if data.startswith("quiz_ans:"):
             try: idx = int(data.split(":", 1)[1])
             except Exception: await event.answer("خطا", alert=True); return
             g = _find_game_for_callback(event)
-            if not g or g.get("state") != "playing":
-                await event.answer("❌", alert=True); return
+            if not g or g.get("state") != "playing": await event.answer("❌", alert=True); return
             cq = g.get("current_question")
-            if not cq or cq.get("answered"):
-                await event.answer("سوال بسته شده", alert=True); return
-            if cq.get("player") != uid:
-                await event.answer("⛔ مال تو نیست!", alert=True); return
-            await event.answer("✅")
-            asyncio.create_task(quiz_answer(g, uid, idx)); return
-
+            if not cq or cq.get("answered"): await event.answer("سوال بسته شده", alert=True); return
+            if cq.get("player") != uid: await event.answer("⛔ مال تو نیست!", alert=True); return
+            await event.answer("✅"); asyncio.create_task(quiz_answer(g, uid, idx)); return
         if data == "quiz_skip_turn":
             g = _find_game_for_callback(event)
-            if not g or g.get("state") != "playing":
-                await event.answer("❌", alert=True); return
-            if not is_admin(uid):
-                await event.answer("⛔ فقط ادمین!", alert=True); return
-            await event.answer("⏭ رد شد")
-            asyncio.create_task(quiz_skip_turn(g)); return
-
+            if not g or g.get("state") != "playing": await event.answer("❌", alert=True); return
+            if not is_admin(uid): await event.answer("⛔ فقط ادمین!", alert=True); return
+            await event.answer("⏭"); asyncio.create_task(quiz_skip_turn(g)); return
         if data == "quiz_cancel":
             SETUP_GAMES.pop(uid, None)
-            await event.answer("❌ لغو شد")
-            try: await safe_edit(event, f"{E('cross', '❌')} کوییز لغو شد",
-                                  parse_mode="html", buttons=None)
+            await event.answer("❌")
+            try: await safe_edit(event, f"{E('cross','❌')} کوییز لغو شد", parse_mode="html", buttons=None)
             except Exception: pass
             return
-
         if data == "quiz_setup":
             g = SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer()
             text, btns = render_categories_menu(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
-        if data == "quiz_noop":
-            await event.answer(); return
-
+        if data == "quiz_noop": await event.answer(); return
         if data.startswith("quiz_cat:"):
             g = SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
-            try:
-                idx = int(data.split(":", 1)[1]); _, _, name = QUIZ_CATEGORIES[idx]
+            try: idx = int(data.split(":", 1)[1]); _, _, name = QUIZ_CATEGORIES[idx]
             except Exception: await event.answer("خطا", alert=True); return
-            if name in g["categories"]:
-                g["categories"].remove(name); await event.answer(f"➖ {name}")
-            else:
-                g["categories"].append(name); await event.answer(f"✅ {name}")
+            if name in g["categories"]: g["categories"].remove(name); await event.answer(f"➖ {name}")
+            else: g["categories"].append(name); await event.answer(f"✅ {name}")
             text, btns = render_categories_menu(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data == "quiz_backcat":
             g = SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer()
             text, btns = render_categories_menu(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data == "quiz_settings":
             g = SETUP_GAMES.get(uid)
-            if not g or not g["categories"]:
-                await event.answer("اول دسته انتخاب کن", alert=True); return
+            if not g or not g["categories"]: await event.answer("اول دسته", alert=True); return
             await event.answer()
             text, btns = render_settings_menu(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data.startswith("quiz_q:"):
             g = SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
@@ -2592,179 +2761,130 @@ async def on_cb(event):
             await event.answer(f"✅ {g['questions_per_player']}")
             text, btns = render_settings_menu(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data.startswith("quiz_t:"):
             g = SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             g["time_per_question"] = int(data.split(":", 1)[1])
-            await event.answer(f"✅ {g['time_per_question']} ثانیه")
+            await event.answer(f"✅ {g['time_per_question']}s")
             text, btns = render_settings_menu(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data.startswith("quiz_s:"):
             g = SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             g["target_score"] = int(data.split(":", 1)[1])
-            await event.answer(f"✅ {'بدون' if g['target_score'] == 0 else g['target_score']}")
+            await event.answer(f"✅ {g['target_score']}")
             text, btns = render_settings_menu(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data == "quiz_summary":
             g = SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer()
             text, btns = render_summary_menu(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data == "quiz_create":
             g = SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer("✅")
             try:
-                await safe_edit(event,
-                                f"{E('check', '✅')} <b>بازی ساخته شد!</b>\n{DIV}\n\n"
-                                f"{E('info', 'ℹ️')} پیام شرکت توی گروه فرستاده شد.",
+                await safe_edit(event, f"{E('check','✅')} <b>بازی ساخته شد!</b>",
                                 parse_mode="html", buttons=None)
             except Exception: pass
-            g["state"] = "waiting"
-            ACTIVE_GAMES[g["group_id"]] = g
+            g["state"] = "waiting"; ACTIVE_GAMES[g["group_id"]] = g
             SETUP_GAMES.pop(uid, None)
             await quiz_broadcast_join(g); return
 
         if data == "td_join":
             g = _find_td_game(event)
             if not g: await event.answer("❌", alert=True); return
-            if g.get("state") != "waiting":
-                await event.answer("⏳ شروع شده!", alert=True); return
-            if uid in g["players"]:
-                await event.answer("⚠️ قبلاً شرکت کردی!", alert=True); return
+            if g.get("state") != "waiting": await event.answer("⏳ شروع شده!", alert=True); return
+            if uid in g["players"]: await event.answer("⚠️ قبلاً!", alert=True); return
             try:
                 s = await event.get_sender()
                 name = user_name(s); uu = getattr(s, "username", None)
-            except Exception:
-                name = str(uid); uu = None
-            g["players"][uid] = {"name": name, "username": uu, "turns_done": 0,
-                                  "joined_at": now_iso()}
+            except Exception: name = str(uid); uu = None
+            g["players"][uid] = {"name": name, "username": uu, "turns_done": 0, "joined_at": now_iso()}
             await event.answer(f"✅ {name} ثبت شد!")
             try: await td_refresh_join(g)
             except Exception as e: logger.exception(f"td refresh: {e}")
             return
-
         if data == "td_start":
             g = _find_td_game(event)
-            if not g or g.get("state") != "waiting":
-                await event.answer("❌", alert=True); return
-            if not is_admin(uid):
-                await event.answer("⛔ فقط ادمین!", alert=True); return
-            if len(g["players"]) < 2:
-                await event.answer("⚠️ حداقل ۲ بازیکن!", alert=True); return
+            if not g or g.get("state") != "waiting": await event.answer("❌", alert=True); return
+            if not is_admin(uid): await event.answer("⛔ فقط ادمین!", alert=True); return
+            if len(g["players"]) < 2: await event.answer("⚠️ حداقل ۲ بازیکن!", alert=True); return
             await event.answer("🚀")
             try:
                 if g.get("join_msg_id"):
                     await client.edit_message(g["group_id"], g["join_msg_id"],
-                        text=(f"{E('check', '✅')} <b>بازی شروع شد!</b>\n"
-                              f"{E('user', '👤')} <b>{len(g['players'])}</b> بازیکن"),
-                        parse_mode="html", buttons=None)
+                        text=f"{E('check','✅')} <b>شروع شد!</b>", parse_mode="html", buttons=None)
             except Exception: pass
             asyncio.create_task(td_start_game(g)); return
-
         if data.startswith("td_pick:"):
             try: kind = data.split(":", 1)[1]
             except Exception: await event.answer("خطا", alert=True); return
             g = _find_td_game(event)
-            if not g or g.get("state") != "playing":
-                await event.answer("❌", alert=True); return
-            if g.get("current_player") != uid:
-                await event.answer("⛔ نوبت تو نیست!", alert=True); return
-            if g.get("current_state") != "picking_choice":
-                await event.answer("الان نمیشه", alert=True); return
-            await event.answer("✅")
-            asyncio.create_task(td_play(g, uid, kind)); return
-
-        # ═══════════════════════════════════════════
-        # ✅ دکمه «جواب دادم» — بازیکن نوبت
-        # ═══════════════════════════════════════════
+            if not g or g.get("state") != "playing": await event.answer("❌", alert=True); return
+            if g.get("current_player") != uid: await event.answer("⛔ نوبت تو نیست!", alert=True); return
+            if g.get("current_state") != "picking_choice": await event.answer("الان نمیشه", alert=True); return
+            await event.answer("✅"); asyncio.create_task(td_play(g, uid, kind)); return
         if data == "td_done":
             g = _find_td_game(event)
-            if not g or g.get("state") != "playing":
-                await event.answer("❌", alert=True); return
-            if g.get("current_player") != uid:
-                await event.answer("⛔ فقط بازیکن نوبت!", alert=True); return
-            if g.get("current_state") != "waiting_done":
-                await event.answer("⚠️ قبلاً ثبت شد یا الان نوبت نیست", alert=True); return
+            if not g or g.get("state") != "playing": await event.answer("❌", alert=True); return
+            if g.get("current_player") != uid: await event.answer("⛔ فقط بازیکن نوبت!", alert=True); return
+            if g.get("current_state") != "waiting_done": await event.answer("⚠️", alert=True); return
             await event.answer("✅ نفر بعدی...")
-            # کنسل auto_next
             if g.get("auto_next_task"):
                 try: g["auto_next_task"].cancel()
                 except Exception: pass
-            g["current_state"] = "moving_on"
-            g["current_index"] += 1
+            g["current_state"] = "moving_on"; g["current_index"] += 1
             await safe_send(g["group_id"],
-                            f"{E('check', '✅')} <b>ثبت شد!</b>\n"
-                            f"{E('rocket', '🚀')} <i>در حال رفتن به نفر بعدی...</i>",
+                            f"{E('check','✅')} <b>ثبت شد!</b>\n"
+                            f"{E('rocket','🚀')} <i>در حال رفتن به نفر بعدی...</i>",
                             parse_mode="html")
             asyncio.create_task(td_next_turn(g)); return
-
         if data == "td_skip_turn":
             g = _find_td_game(event)
-            if not g or g.get("state") != "playing":
-                await event.answer("❌", alert=True); return
-            if not is_admin(uid):
-                await event.answer("⛔", alert=True); return
-            await event.answer("⏭")
-            asyncio.create_task(td_skip_turn(g)); return
-
+            if not g or g.get("state") != "playing": await event.answer("❌", alert=True); return
+            if not is_admin(uid): await event.answer("⛔", alert=True); return
+            await event.answer("⏭"); asyncio.create_task(td_skip_turn(g)); return
         if data == "td_next_now":
             g = _find_td_game(event)
-            if not g or g.get("state") != "playing":
-                await event.answer("❌", alert=True); return
-            if not is_admin(uid):
-                await event.answer("⛔", alert=True); return
+            if not g or g.get("state") != "playing": await event.answer("❌", alert=True); return
+            if not is_admin(uid): await event.answer("⛔", alert=True); return
             await event.answer("▶️")
             if g.get("current_state") == "moving_on": return
             if g.get("auto_next_task"):
                 try: g["auto_next_task"].cancel()
                 except Exception: pass
-            g["current_state"] = "moving_on"
-            g["current_index"] += 1
+            g["current_state"] = "moving_on"; g["current_index"] += 1
             asyncio.create_task(td_next_turn(g)); return
-
         if data == "td_setup":
             g = TD_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer()
             text, btns = render_td_categories(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
-        if data == "td_noop":
-            await event.answer(); return
-
+        if data == "td_noop": await event.answer(); return
         if data.startswith("td_cat:"):
             g = TD_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
-            kind = data.split(":", 1)[1]
-            if kind in g["categories"]:
-                g["categories"].remove(kind); await event.answer("➖")
-            else:
-                g["categories"].append(kind); await event.answer("✅")
+            k = data.split(":", 1)[1]
+            if k in g["categories"]: g["categories"].remove(k); await event.answer("➖")
+            else: g["categories"].append(k); await event.answer("✅")
             text, btns = render_td_categories(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data == "td_backcat":
             g = TD_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer()
             text, btns = render_td_categories(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data == "td_settings":
             g = TD_SETUP_GAMES.get(uid)
-            if not g or not g["categories"]:
-                await event.answer("اول دسته", alert=True); return
+            if not g or not g["categories"]: await event.answer("اول دسته", alert=True); return
             await event.answer()
             text, btns = render_td_settings(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data.startswith("td_turns:"):
             g = TD_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
@@ -2772,50 +2892,40 @@ async def on_cb(event):
             await event.answer(f"✅ {g['turns_per_player']}")
             text, btns = render_td_settings(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data.startswith("td_time:"):
             g = TD_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             g["timeout_sec"] = int(data.split(":", 1)[1])
-            await event.answer(f"✅ {g['timeout_sec']} ثانیه")
+            await event.answer(f"✅ {g['timeout_sec']}s")
             text, btns = render_td_settings(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data == "td_summary":
             g = TD_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer()
             text, btns = render_td_summary(g)
             await safe_edit(event, text, buttons=btns, parse_mode="html"); return
-
         if data == "td_create":
             g = TD_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer("✅")
             try:
-                await safe_edit(event,
-                                f"{E('check', '✅')} <b>بازی ساخته شد!</b>\n{DIV}\n\n"
-                                f"{E('info', 'ℹ️')} پیام شرکت توی گروه فرستاده شد.",
+                await safe_edit(event, f"{E('check','✅')} <b>بازی ساخته شد!</b>",
                                 parse_mode="html", buttons=None)
             except Exception: pass
-            g["state"] = "waiting"
-            TD_ACTIVE_GAMES[g["group_id"]] = g
+            g["state"] = "waiting"; TD_ACTIVE_GAMES[g["group_id"]] = g
             TD_SETUP_GAMES.pop(uid, None)
             await td_broadcast_join(g); return
-
         if data == "td_cancel":
             TD_SETUP_GAMES.pop(uid, None)
             await event.answer("❌")
-            try: await safe_edit(event, f"{E('cross', '❌')} لغو شد",
-                                  parse_mode="html", buttons=None)
+            try: await safe_edit(event, f"{E('cross','❌')} لغو شد", parse_mode="html", buttons=None)
             except Exception: pass
             return
 
         if data == "cancel":
-            clear_state(uid)
-            await event.answer("❌ لغو شد")
-            try: await safe_edit(event, f"{E('cross', '❌')} لغو شد",
-                                  parse_mode="html", buttons=None)
+            clear_state(uid); await event.answer("❌")
+            try: await safe_edit(event, f"{E('cross','❌')} لغو شد", parse_mode="html", buttons=None)
             except Exception: pass
             return
         if data.startswith("dl:"):
@@ -2827,156 +2937,129 @@ async def on_cb(event):
             dl = (datetime.now(IRAN_TZ) + td).isoformat() if td else None
             nd = dict(st["data"]); nd["deadline"] = dl
             set_state(uid, "awaiting_group", **nd)
-            await event.answer("✅")
-            await _ask_group(event, nd); return
+            await event.answer("✅"); await _ask_group(event, nd); return
         if data.startswith("join:"):
             try: cid = int(data.split(":", 1)[1])
             except ValueError: await event.answer("خطا", alert=True); return
             ch = db.get_challenge(cid)
-            if not ch or not ch.get("is_active"):
-                await event.answer("چالش یافت نشد", alert=True); return
-            if db.has_answered(cid, uid):
-                await event.answer("قبلاً شرکت کردی!", alert=True); return
+            if not ch or not ch.get("is_active"): await event.answer("چالش یافت نشد", alert=True); return
+            if db.has_answered(cid, uid): await event.answer("قبلاً!", alert=True); return
             set_state(uid, "awaiting_answer", challenge_id=cid)
             await event.answer("✅")
             await safe_edit(event,
-                            f"{E('check', '✅')} <b>تایید شد!</b>\n\n"
-                            f"{E('message', '💬')} <b>جوابت رو بفرست:</b>",
+                            f"{E('check','✅')} <b>تایید شد!</b>\n\n"
+                            f"{E('message','💬')} <b>جوابت رو بفرست:</b>",
                             parse_mode="html", buttons=None)
             return
         if data.startswith("vote:"):
-            try:
-                _, c_s, i_s = data.split(":"); cid, idx = int(c_s), int(i_s)
+            try: _, c_s, i_s = data.split(":"); cid, idx = int(c_s), int(i_s)
             except Exception: await event.answer("خطا", alert=True); return
             ch = db.get_challenge(cid)
-            if not ch or not ch.get("is_active"):
-                await event.answer("بسته شده", alert=True); return
-            if db.has_voted(cid, uid):
-                await event.answer("قبلاً رأی دادی", alert=True); return
+            if not ch or not ch.get("is_active"): await event.answer("بسته شده", alert=True); return
+            if db.has_voted(cid, uid): await event.answer("قبلاً رأی دادی", alert=True); return
             try:
                 s = await event.get_sender(); un = user_name(s)
             except Exception: un = str(uid)
-            db.save_poll_vote(cid, uid, un, idx)
-            db.add_points(uid, un, 5, joined=True)
+            db.save_poll_vote(cid, uid, un, idx); db.add_points(uid, un, 5, joined=True)
             await event.answer("✅")
             opts = json.loads(ch["options"]) if ch.get("options") else []
             ch_t = opts[idx] if 0 <= idx < len(opts) else "?"
             try:
                 await safe_edit(event,
-                                f"{E('check', '✅')} <b>رأی ثبت شد!</b>\n\n"
-                                f"{E('vote', '🗳')} {h(ch_t)}\n"
-                                f"{E('star', '⭐')} +۵ امتیاز",
+                                f"{E('check','✅')} <b>رأی ثبت شد!</b>\n\n"
+                                f"{E('vote','🗳')} {h(ch_t)}\n{E('star','⭐')} +۵",
                                 parse_mode="html", buttons=None)
             except Exception: pass
             return
 
-        if not is_admin(uid):
-            await event.answer("⛔", alert=True); return
+        if not is_admin(uid): await event.answer("⛔", alert=True); return
 
         if data == "new_text":
-            set_state(uid, "awaiting_title", type="text")
-            await event.answer()
-            await safe_edit(event, f"{E('diamond', '💎')} <b>چالش متنی</b>\n{DIV}\n\nعنوان:",
-                            parse_mode="html",
-                            buttons=[[Button.inline("❌ لغو", data=b"cancel")]]); return
+            set_state(uid, "awaiting_title", type="text"); await event.answer()
+            await safe_edit(event, f"{E('diamond','💎')} <b>چالش متنی</b>\n{DIV}\n\nعنوان:",
+                            parse_mode="html", buttons=[[Button.inline("❌ لغو", data=b"cancel")]]); return
         if data == "new_poll":
-            set_state(uid, "awaiting_title", type="poll")
-            await event.answer()
-            await safe_edit(event, f"{E('chart', '📊')} <b>نظرسنجی</b>\n{DIV}\n\nعنوان:",
-                            parse_mode="html",
-                            buttons=[[Button.inline("❌ لغو", data=b"cancel")]]); return
+            set_state(uid, "awaiting_title", type="poll"); await event.answer()
+            await safe_edit(event, f"{E('chart','📊')} <b>نظرسنجی</b>\n{DIV}\n\nعنوان:",
+                            parse_mode="html", buttons=[[Button.inline("❌ لغو", data=b"cancel")]]); return
         if data == "templates":
             btns = [[Button.inline(t, data=f"tpl:{i}".encode())] for i, (t, _) in enumerate(TEMPLATES)]
             btns.append([Button.inline("🔙 بازگشت", data=b"menu")])
             await event.answer()
-            await safe_edit(event, f"{E('gift', '🎁')} <b>قالب‌ها</b>",
-                            parse_mode="html", buttons=btns); return
+            await safe_edit(event, f"{E('gift','🎁')} <b>قالب‌ها</b>", parse_mode="html", buttons=btns); return
         if data.startswith("tpl:"):
-            try:
-                idx = int(data.split(":", 1)[1]); t, q = TEMPLATES[idx]
+            try: idx = int(data.split(":", 1)[1]); t, q = TEMPLATES[idx]
             except Exception: await event.answer("خطا", alert=True); return
-            set_state(uid, "awaiting_deadline", type="text",
-                      title=t.replace("💎 ", ""), question=q)
-            await event.answer("✅")
-            await _ask_deadline(event); return
+            set_state(uid, "awaiting_deadline", type="text", title=t.replace("💎 ", ""), question=q)
+            await event.answer("✅"); await _ask_deadline(event); return
         if data == "my_challenges":
             chs = db.get_challenges(admin_id=uid)
             if not chs: await event.answer("خالی", alert=True); return
-            await event.answer()
-            await _render_challenges_page(event, chs, page=0); return
+            await event.answer(); await _render_challenges_page(event, chs, page=0); return
         if data.startswith("chpage:"):
             page = int(data.split(":", 1)[1])
             chs = db.get_challenges(admin_id=uid)
-            await event.answer()
-            await _render_challenges_page(event, chs, page=page); return
+            await event.answer(); await _render_challenges_page(event, chs, page=page); return
         if data == "my_groups":
             groups = db.get_groups()
             if not groups: await event.answer("خالی", alert=True); return
             await event.answer()
-            lines = [f"{E('group', '🏢')} <b>گروه‌ها</b>\n{DIV}\n"]
+            lines = [f"{E('group','🏢')} <b>گروه‌ها</b>\n{DIV}\n"]
             for i, g in enumerate(groups[:20], 1):
-                lines.append(f"{E('fire', '🔥')} <b>#{i}</b> {h(g.get('title') or '—')}\n"
-                             f"{E('id', '🆔')} <code>{g['group_id']}</code>")
+                lines.append(f"{E('fire','🔥')} <b>#{i}</b> {h(g.get('title') or '—')}\n"
+                             f"{E('id','🆔')} <code>{g['group_id']}</code>")
             await safe_edit(event, "\n".join(lines),
-                            buttons=[[Button.inline("🔙 بازگشت", data=b"menu")]],
-                            parse_mode="html"); return
+                            buttons=[[Button.inline("🔙 بازگشت", data=b"menu")]], parse_mode="html"); return
         if data == "menu":
-            await event.answer()
-            await send_admin_menu(event, edit=True); return
+            await event.answer(); await send_admin_menu(event, edit=True); return
         if data == "top":
             top = db.get_top(10)
             if not top: await event.answer("خالی", alert=True); return
             await event.answer()
             medals = ["🥇", "🥈", "🥉"] + ["🎖"] * 7
-            lines = [f"{E('trophy', '🏆')} <b>لیدربورد</b>\n{DIV}\n"]
+            lines = [f"{E('trophy','🏆')} <b>لیدربورد</b>\n{DIV}\n"]
             for i, u in enumerate(top):
                 m = medals[i] if i < len(medals) else "•"
                 lines.append(f"{m} <b>{h(u['user_name'] or 'ناشناس')}</b> — <code>{u['points']}</code>")
             await safe_edit(event, "\n".join(lines),
-                            buttons=[[Button.inline("🔙 بازگشت", data=b"menu")]],
-                            parse_mode="html"); return
+                            buttons=[[Button.inline("🔙 بازگشت", data=b"menu")]], parse_mode="html"); return
         if data == "mylink":
             link = f"https://t.me/{BOT_USERNAME}?start=anon_{uid}"
-            n = db.count_anon_received(uid)
-            await event.answer()
+            n = db.count_anon_received(uid); await event.answer()
             await safe_edit(event,
-                            f"{E('heart', '💌')} <b>لینک NGL</b>\n{DIV}\n\n"
-                            f"<code>{link}</code>\n\n{E('stats', '📊')} <code>{n}</code>",
+                            f"{E('heart','💌')} <b>لینک NGL</b>\n{DIV}\n\n"
+                            f"<code>{link}</code>\n\n{E('stats','📊')} <code>{n}</code>",
                             parse_mode="html",
-                            buttons=[
-                                [Button.url("📤 اشتراک", f"https://t.me/share/url?url={link}")],
-                                [Button.inline("📥 صندوق", data=b"anon_inbox")],
-                                [Button.inline("🔙 بازگشت", data=b"menu")],
-                            ]); return
+                            buttons=[[Button.url("📤 اشتراک", f"https://t.me/share/url?url={link}")],
+                                     [Button.inline("📥 صندوق", data=b"anon_inbox")],
+                                     [Button.inline("🔙 بازگشت", data=b"menu")]]); return
         if data == "anon_inbox":
             items = db.get_anon_inbox(uid, limit=10)
             if not items: await event.answer("خالی", alert=True); return
             await event.answer()
-            lines = [f"{E('heart', '💌')} <b>صندوق ناشناس</b>\n{DIV}\n"]
+            lines = [f"{E('heart','💌')} <b>صندوق ناشناس</b>\n{DIV}\n"]
             for i, m in enumerate(items, 1):
-                lines.append(f"\n{E('message', '💬')} <b>#{i}</b>\n"
+                lines.append(f"\n{E('message','💬')} <b>#{i}</b>\n"
                              f"<blockquote>{h(m['text'])}</blockquote>\n"
-                             f"{E('time', '⏱')} {h((m['sent_at'] or '')[:19])}")
+                             f"{E('time','⏱')} {h((m['sent_at'] or '')[:19])}")
             db.mark_anon_read(uid)
             await safe_edit(event, "\n".join(lines),
-                            buttons=[[Button.inline("🔙 بازگشت", data=b"menu")]],
-                            parse_mode="html"); return
+                            buttons=[[Button.inline("🔙 بازگشت", data=b"menu")]], parse_mode="html"); return
         if data == "stats":
             al = "، ".join([f"<code>{x}</code>" for x in sorted(ALL_ADMINS)])
             await event.answer()
             await safe_edit(event,
-                            f"{E('stats', '📊')} <b>آمار</b>\n{DIV}\n\n"
-                            f"{E('group', '🏢')} گروه‌ها: <code>{len(db.get_groups())}</code>\n"
-                            f"{E('user', '👤')} کاربران: <code>{db.count_users()}</code>\n"
-                            f"{E('diamond', '💎')} چالش‌ها: <code>{len(db.get_challenges())}</code>\n"
-                            f"{E('fire', '🔥')} فعال: <code>{db.count_active_challenges()}</code>\n\n"
-                            f"{E('crown', '👑')} <b>ادمین‌ها:</b>\n{al}",
+                            f"{E('stats','📊')} <b>آمار</b>\n{DIV}\n\n"
+                            f"{E('group','🏢')} گروه‌ها: <code>{len(db.get_groups())}</code>\n"
+                            f"{E('user','👤')} کاربران: <code>{db.count_users()}</code>\n"
+                            f"{E('diamond','💎')} چالش‌ها: <code>{len(db.get_challenges())}</code>\n"
+                            f"{E('fire','🔥')} فعال: <code>{db.count_active_challenges()}</code>\n\n"
+                            f"{E('crown','👑')} ادمین‌ها:\n{al}",
                             parse_mode="html",
                             buttons=[[Button.inline("🔙 بازگشت", data=b"menu")]]); return
         if data == "broadcast":
-            set_state(uid, "awaiting_broadcast")
-            await event.answer()
-            await safe_edit(event, f"{E('message', '💬')} پیام رو بفرست:",
+            set_state(uid, "awaiting_broadcast"); await event.answer()
+            await safe_edit(event, f"{E('message','💬')} پیام رو بفرست:",
                             parse_mode="html",
                             buttons=[[Button.inline("❌ لغو", data=b"cancel")]]); return
         if data.startswith("viewans:"):
@@ -2984,8 +3067,7 @@ async def on_cb(event):
             except ValueError: await event.answer("خطا", alert=True); return
             ch = db.get_challenge(cid)
             if not ch: await event.answer("یافت نشد", alert=True); return
-            await event.answer()
-            await _show_challenge_answers(event, ch); return
+            await event.answer(); await _show_challenge_answers(event, ch); return
         if data.startswith("chgrp:"):
             try: gid_c = int(data.split(":", 1)[1])
             except ValueError: await event.answer("خطا", alert=True); return
@@ -2994,8 +3076,7 @@ async def on_cb(event):
                 await event.answer("⚠️", alert=True); return
             d = st["data"]
             cid = db.create_challenge(uid, gid_c, d.get("title", ""), d.get("question", ""),
-                                       ch_type=d.get("type", "text"),
-                                       options=d.get("options"),
+                                       ch_type=d.get("type", "text"), options=d.get("options"),
                                        deadline=d.get("deadline"))
             clear_state(uid)
             link = f"https://t.me/{BOT_USERNAME}?start=ch_{cid}"
@@ -3007,13 +3088,12 @@ async def on_cb(event):
                 if sent: db.set_challenge_message(cid, sent.id)
                 await event.answer("✅")
                 await safe_edit(event,
-                                f"{E('check', '✅')} <b>ساخته شد!</b>\n\n"
-                                f"{E('diamond', '💎')} <b>#{cid}</b> {h(d.get('title', ''))}",
+                                f"{E('check','✅')} <b>ساخته شد!</b>\n\n"
+                                f"{E('diamond','💎')} <b>#{cid}</b> {h(d.get('title', ''))}",
                                 parse_mode="html",
                                 buttons=[[Button.inline("🔙 منو", data=b"menu")]])
             except Exception as e:
-                logger.exception(f"send challenge: {e}")
-                await event.answer("خطا", alert=True)
+                logger.exception(f"send challenge: {e}"); await event.answer("خطا", alert=True)
             return
     except Exception as ex:
         logger.exception(f"cb: {ex}")
@@ -3022,20 +3102,19 @@ async def on_cb(event):
 
 
 async def _render_challenges_page(event, chs, page=0, per_page=5):
-    total = len(chs)
-    pages = max(1, (total + per_page - 1) // per_page)
+    total = len(chs); pages = max(1, (total + per_page - 1) // per_page)
     page = max(0, min(page, pages - 1))
     items = chs[page * per_page:page * per_page + per_page]
-    lines = [f"{E('list', '📋')} <b>چالش‌های شما</b> <i>({page+1}/{pages})</i>\n{DIV}\n"]
+    lines = [f"{E('list','📋')} <b>چالش‌های شما</b> <i>({page+1}/{pages})</i>\n{DIV}\n"]
     btns = []
     for ch in items:
         ct = ch.get("ch_type") or "text"
         cnt = db.count_poll_votes(ch["id"]) if ct == "poll" else db.count_answers(ch["id"])
-        kd = f"{E('chart', '📊')}" if ct == "poll" else f"{E('diamond', '💎')}"
+        kd = f"{E('chart','📊')}" if ct == "poll" else f"{E('diamond','💎')}"
         st = "🟢" if ch.get("is_active") else "🔴"
         lines.append(f"\n{kd} <b>#{ch['id']}</b> {st} {h(ch['title'])}\n"
-                     f"{E('user', '👤')} <code>{cnt}</code>\n"
-                     f"{E('time', '⏱')} {h((ch.get('created_at') or '')[:19])}")
+                     f"{E('user','👤')} <code>{cnt}</code>\n"
+                     f"{E('time','⏱')} {h((ch.get('created_at') or '')[:19])}")
         btns.append([Button.inline(f"📊 #{ch['id']} - {ch['title'][:25]}",
                                     data=f"viewans:{ch['id']}".encode())])
     nav = []
@@ -3050,37 +3129,33 @@ async def _show_challenge_answers(event, ch):
     cid = ch["id"]; ct = ch.get("ch_type") or "text"
     if ct == "poll":
         opts = json.loads(ch["options"]) if ch.get("options") else []
-        res = db.get_poll_results(cid, len(opts))
-        total = sum(res.values()) or 1
-        lines = [f"{E('chart', '📊')} <b>نتایج نظرسنجی</b>\n{DIV}\n\n"
-                 f"{E('diamond', '💎')} {h(ch['title'])}\n"
-                 f"{E('user', '👤')} <code>{sum(res.values())}</code>\n"]
+        res = db.get_poll_results(cid, len(opts)); total = sum(res.values()) or 1
+        lines = [f"{E('chart','📊')} <b>نتایج نظرسنجی</b>\n{DIV}\n\n"
+                 f"{E('diamond','💎')} {h(ch['title'])}\n"
+                 f"{E('user','👤')} <code>{sum(res.values())}</code>\n"]
         for i, o in enumerate(opts):
             n = res.get(i, 0); pct = int(100 * n / total)
             bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
-            lines.append(f"\n{E('vote', '🗳')} <b>{h(o)}</b>\n<code>{bar}</code> {pct}% (<code>{n}</code>)")
+            lines.append(f"\n{E('vote','🗳')} <b>{h(o)}</b>\n<code>{bar}</code> {pct}% (<code>{n}</code>)")
         await safe_edit(event, "\n".join(lines),
-                        buttons=[[Button.inline("🔙 بازگشت", data=b"my_challenges")]],
-                        parse_mode="html")
-        return
+                        buttons=[[Button.inline("🔙 بازگشت", data=b"my_challenges")]], parse_mode="html"); return
     ans = db.get_answers(cid)
-    lines = [f"{E('message', '💬')} <b>پاسخ‌ها</b>\n{DIV}\n\n"
-             f"{E('diamond', '💎')} {h(ch['title'])}\n"
-             f"{E('user', '👤')} <code>{len(ans)}</code>\n"]
+    lines = [f"{E('message','💬')} <b>پاسخ‌ها</b>\n{DIV}\n\n"
+             f"{E('diamond','💎')} {h(ch['title'])}\n"
+             f"{E('user','👤')} <code>{len(ans)}</code>\n"]
     if not ans:
-        lines.append(f"\n{E('info', 'ℹ️')} هنوز کسی شرکت نکرده.")
+        lines.append(f"\n{E('info','ℹ️')} هنوز کسی شرکت نکرده.")
     else:
         for i, a in enumerate(ans[:15], 1):
             u_l = f'<a href="tg://user?id={a["user_id"]}">{a["user_id"]}</a>'
             un = f'@{a["username"]}' if a.get("username") else "—"
-            lines.append(f"\n{E('fire', '🔥')} <b>#{i}</b>\n"
-                         f"├ {E('user', '👤')} {h(a.get('user_name') or '—')}\n"
-                         f"├ {E('id', '🆔')} {u_l}\n"
-                         f"├ {E('link', '🔗')} {h(un)}\n"
+            lines.append(f"\n{E('fire','🔥')} <b>#{i}</b>\n"
+                         f"├ {E('user','👤')} {h(a.get('user_name') or '—')}\n"
+                         f"├ {E('id','🆔')} {u_l}\n"
+                         f"├ {E('link','🔗')} {h(un)}\n"
                          f"└ <blockquote>{h(a['answer'])}</blockquote>")
     await safe_edit(event, "\n".join(lines),
-                    buttons=[[Button.inline("🔙 بازگشت", data=b"my_challenges")]],
-                    parse_mode="html")
+                    buttons=[[Button.inline("🔙 بازگشت", data=b"my_challenges")]], parse_mode="html")
 
 
 async def _announce_results(ch):
@@ -3088,22 +3163,21 @@ async def _announce_results(ch):
     try:
         if ct == "poll":
             opts = json.loads(ch["options"]) if ch.get("options") else []
-            res = db.get_poll_results(cid, len(opts))
-            total = sum(res.values()) or 1
-            lines = [f"{E('flag', '🏁')} <b>نظرسنجی بسته شد!</b>\n{DIV}\n\n"
-                     f"{E('diamond', '💎')} {h(ch['title'])}\n"
-                     f"{E('user', '👤')} <code>{sum(res.values())}</code>\n"]
+            res = db.get_poll_results(cid, len(opts)); total = sum(res.values()) or 1
+            lines = [f"{E('flag','🏁')} <b>نظرسنجی بسته شد!</b>\n{DIV}\n\n"
+                     f"{E('diamond','💎')} {h(ch['title'])}\n"
+                     f"{E('user','👤')} <code>{sum(res.values())}</code>\n"]
             for i, o in enumerate(opts):
                 n = res.get(i, 0); pct = int(100 * n / total)
                 bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
-                lines.append(f"{E('vote', '🗳')} <b>{h(o)}</b>\n<code>{bar}</code> {pct}%")
+                lines.append(f"{E('vote','🗳')} <b>{h(o)}</b>\n<code>{bar}</code> {pct}%")
         else:
             ans = db.get_answers(cid)
-            lines = [f"{E('flag', '🏁')} <b>چالش بسته شد!</b>\n{DIV}\n\n"
-                     f"{E('diamond', '💎')} {h(ch['title'])}\n"
-                     f"{E('user', '👤')} <code>{len(ans)}</code>\n"]
+            lines = [f"{E('flag','🏁')} <b>چالش بسته شد!</b>\n{DIV}\n\n"
+                     f"{E('diamond','💎')} {h(ch['title'])}\n"
+                     f"{E('user','👤')} <code>{len(ans)}</code>\n"]
             for i, a in enumerate(ans[:10], 1):
-                lines.append(f"\n{E('fire', '🔥')} <b>#{i}</b>\n<blockquote>{h(a['answer'])}</blockquote>")
+                lines.append(f"\n{E('fire','🔥')} <b>#{i}</b>\n<blockquote>{h(a['answer'])}</blockquote>")
         await safe_send(gid, "\n".join(lines), parse_mode="html")
     except Exception as e: logger.exception(f"announce: {e}")
 
@@ -3115,16 +3189,14 @@ async def deadline_watcher():
             for ch in db.get_expired_challenges():
                 try: await _announce_results(ch)
                 except Exception: pass
-                db.deactivate_challenge(ch["id"])
-                db.mark_results_announced(ch["id"])
+                db.deactivate_challenge(ch["id"]); db.mark_results_announced(ch["id"])
         except Exception as e: logger.exception(f"watcher: {e}")
         await asyncio.sleep(60)
 
 
 async def start_web_server():
     app = web.Application()
-    async def health(request):
-        return web.Response(text="OK — Unicorn Bot is running ✨")
+    async def health(request): return web.Response(text="OK — Unicorn Bot running ✨")
     async def root(request):
         return web.Response(text=(
             f"🦄 UNICORN ANONY BOT — ROYAL EDITION\n"
@@ -3133,10 +3205,8 @@ async def start_web_server():
     app.router.add_get("/", root)
     app.router.add_get("/health", health)
     app.router.add_get("/healthz", health)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
+    runner = web.AppRunner(app); await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT); await site.start()
     logger.info(f"🌐 Web server on 0.0.0.0:{PORT}")
 
 
@@ -3147,10 +3217,8 @@ async def main():
     if not OWNER_ID: raise ValueError("❌ OWNER_ID لازمه")
     if not DATABASE_URL: raise ValueError("❌ DATABASE_URL لازمه")
     logger.info(f"👥 Admins ({len(ALL_ADMINS)}): {sorted(ALL_ADMINS)}")
-    logger.info(f"📚 TD Bank: truth={len(TD_BANK['truth'])} | "
-                f"truth18={len(TD_BANK['truth18'])} | "
-                f"dare={len(TD_BANK['dare'])} | "
-                f"dare18={len(TD_BANK['dare18'])}")
+    logger.info(f"📚 TD Bank: truth={len(TD_BANK['truth'])} | truth18={len(TD_BANK['truth18'])} | "
+                f"dare={len(TD_BANK['dare'])} | dare18={len(TD_BANK['dare18'])}")
     await start_web_server()
     await client.start(bot_token=BOT_TOKEN)
     me = await client.get_me()
@@ -3158,15 +3226,13 @@ async def main():
     logger.info(f"✅ Bot: @{BOT_USERNAME} (ID: {me.id})")
     try:
         await safe_send(OWNER_ID,
-                        f"{E('check', '✅')} <b>ربات روشن شد</b>\n{DIV}\n\n"
-                        f"{E('crown', '👑')} <b>UNICORN ROYAL EDITION</b> {E('crown', '👑')}\n\n"
-                        f"{E('rocket', '🚀')} @{BOT_USERNAME}\n"
-                        f"{E('id', '🆔')} <code>{me.id}</code>\n"
-                        f"{E('crown', '👑')} ادمین‌ها: <code>{len(ALL_ADMINS)}</code>\n"
-                        f"{E('gem', '💎')} بانک TD: "
-                        f"<code>{len(TD_BANK['truth'])}/{len(TD_BANK['truth18'])}/"
-                        f"{len(TD_BANK['dare'])}/{len(TD_BANK['dare18'])}</code>\n"
-                        f"{E('time', '⏱')} {now_str()}",
+                        f"{E('check','✅')} <b>ربات روشن شد</b>\n{DIV}\n\n"
+                        f"{E('crown','👑')} <b>UNICORN ROYAL EDITION</b> {E('crown','👑')}\n\n"
+                        f"{E('rocket','🚀')} @{BOT_USERNAME}\n"
+                        f"{E('id','🆔')} <code>{me.id}</code>\n"
+                        f"{E('crown','👑')} ادمین‌ها: <code>{len(ALL_ADMINS)}</code>\n"
+                        f"{E('detective','🕵️')} معما: <b>فعال</b>\n"
+                        f"{E('time','⏱')} {now_str()}",
                         parse_mode="html")
     except Exception as e: logger.warning(f"notify owner: {e}")
     asyncio.create_task(deadline_watcher())
