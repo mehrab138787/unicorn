@@ -3,6 +3,7 @@
 ✨ UNICORN ANONY BOT — ROYAL EDITION ✨
 + 🕵️ RIDDLE DETECTIVE (Simple)
 + 🧠 QUIZ (Medium Difficulty)
++ 🐛 All bug fixes applied
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
@@ -140,6 +141,23 @@ async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=3):
     return False
 
 
+# ═══════════════════════════════════════════════════════════
+# 🐛 FIX v2: توقف امن تسک — بدون propagate کردن CancelledError
+# ═══════════════════════════════════════════════════════════
+async def _stop_task_safe(task, settle=0.35):
+    """تسک رو کنسل می‌کنه و منتظر پایان کاملش می‌مونه — بدون race condition"""
+    if task and not task.done():
+        try: task.cancel()
+        except Exception: pass
+        try:
+            # ✅ از asyncio.wait استفاده می‌کنیم نه wait_for — چون wait_for خودش cancel می‌کنه
+            await asyncio.wait([task], timeout=2.0)
+        except Exception:
+            pass
+    if settle > 0:
+        await asyncio.sleep(settle)
+
+
 def h(t):
     if t is None: return ""
     return str(t).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -226,9 +244,6 @@ TD_CATEGORIES_ALL = [
 TD_TURNS_OPTIONS = [1, 2, 3, 5]
 TD_TIMEOUT_OPTIONS = [30, 60, 120, 180]
 
-# ═══════════════════════════════════════════════════════════
-# 🕵️ RIDDLE
-# ═══════════════════════════════════════════════════════════
 RIDDLE_CATEGORIES = [
     ("murder", "🔪", "قتل و جنایت"),
     ("theft", "💎", "سرقت"),
@@ -779,17 +794,12 @@ def _ai_call_sync(messages, temperature, model, max_tokens=800):
     return r.json()
 
 
-# ═══════════════════════════════════════════════════════════
-# 🧠 QUIZ AI — سطح متوسط
-# ═══════════════════════════════════════════════════════════
 async def ai_generate_question(category):
     sys_msg = (
         "تو یه طراح سوال کوییز حرفه‌ای هستی.\n"
         "سوالات سطح متوسط طراحی می‌کنی — نه خیلی ساده، نه خیلی سخت.\n\n"
-
         "خروجی فقط JSON:\n"
         '{"question": "متن", "options": ["1","2","3","4"], "correct": 0}\n\n'
-
         "📏 قوانین طراحی سوال:\n"
         "1. سوالات نباید خیلی ساده باشن (نه چیزایی که همه می‌دونن)\n"
         "2. نباید خیلی سخت باشن (نه چیزایی که فقط متخصص می‌دونه)\n"
@@ -797,25 +807,19 @@ async def ai_generate_question(category):
         "4. جواب باید واضحاً درست باشه، ولی نیاز به یه کم فکر کردن داشته باشه\n"
         "5. سوالات تکراری و کلیشه‌ای نساز\n"
         "6. از جزئیات جالب و کم‌شناخته استفاده کن\n\n"
-
         "❌ از این نوع سوالا خودداری کن:\n"
         "   - پایتخت فرانسه کجاست؟ (خیلی ساده)\n"
-        "   - چند نفر تو دنیا هست؟ (خیلی کلی)\n"
-        "   - رنگ آسمون چیه؟ (کاملاً واضح)\n\n"
-
+        "   - چند نفر تو دنیا هست؟ (خیلی کلی)\n\n"
         "✅ از این نوع سوالا استفاده کن:\n"
         "   - جزئیات تاریخی جالب\n"
         "   - اعداد و آمار قابل توجه\n"
         "   - ویژگی‌های منحصر به فرد\n"
-        "   - رکوردها و اولین‌ها\n"
-        "   - ارتباطات بین رشته‌ای\n\n"
-
+        "   - رکوردها و اولین‌ها\n\n"
         "قوانین ساختار:\n"
         "- دقیقاً ۴ گزینه\n"
         "- فقط یک جواب درست\n"
         "- correct از 0 شروع میشه (0-3)\n"
-        "- جای جواب تصادفی باشه، نه همیشه اول\n"
-        "- گزینه‌ها کوتاه و واضح باشن\n"
+        "- جای جواب تصادفی باشه\n"
     )
     msgs = [{"role": "system", "content": sys_msg},
             {"role": "user", "content": f"یه سوال چهارگزینه‌ای سطح متوسط از دسته‌ی «{category}» بساز."}]
@@ -842,14 +846,10 @@ async def ai_generate_question(category):
     return None
 
 
-# ═══════════════════════════════════════════════════════════
-# 🕵️ RIDDLE AI — ساده و باحال
-# ═══════════════════════════════════════════════════════════
 async def ai_generate_riddle(category, difficulty="متوسط"):
     sys_prompt = (
         "تو یه معمار معمای کارآگاهی باحال و خلاق هستی.\n"
         "معماهایی می‌سازی که کوتاه، جذاب و قابل حل باشن.\n\n"
-
         "خروجی فقط JSON:\n"
         "{\n"
         '  "title": "عنوان جذاب و مرموز (حداکثر ۶ کلمه)",\n'
@@ -858,10 +858,9 @@ async def ai_generate_riddle(category, difficulty="متوسط"):
         '  "answer": "جواب + یک جمله توضیح چرا",\n'
         '  "hints": ["راهنمای کوتاه ۱", "راهنمای کوتاه ۲"]\n'
         "}\n\n"
-
         "قوانین:\n"
         "1. داستان حداکثر ۷ جمله — نه بیشتر!\n"
-        "2. سرنخ‌ها توی داستان پنهان باشن، خواننده بتونه کشف کنه\n"
+        "2. سرنخ‌ها توی داستان پنهان باشن\n"
         "3. سوال کوتاه و مستقیم — فقط یک جواب داره\n"
         "4. راهنماها از کلی به جزئی، هر کدوم یک خط\n"
         "5. فارسی روان، باحال، مرموز — مثل شرلوک\n"
@@ -908,15 +907,12 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
     if not answers_list:
         return {"analyses": [], "winner_idx": 0,
                 "summary": "هیچ‌کس جواب نداد — دفعه بعد سریع‌تر باش!"}
-
     answers_txt = "\n".join([
         f"#{a['idx']} {a['name']}: {a['answer']}" for a in answers_list
     ])
-
     sys_prompt = (
         "تو یه کارآگاه باحال و تحلیل‌گر حرفه‌ای هستی.\n"
         "پاسخ هر بازیکن رو کوتاه و بامزه تحلیل می‌کنی.\n\n"
-
         "خروجی فقط JSON:\n"
         "{\n"
         '  "analyses": [\n'
@@ -925,7 +921,6 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
         '  "winner_idx": 1,\n'
         '  "summary": "یک جمله بامزه درباره کل بازی"\n'
         "}\n\n"
-
         "قوانین:\n"
         "1. verdict فقط: correct / close / wrong\n"
         "2. score 0 تا 10:\n"
@@ -934,12 +929,11 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
         "   - 4-6: بعضی سرنخ‌ها رو گرفت\n"
         "   - 1-3: تلاش کرد ولی اشتباه\n"
         "   - 0: بی‌ربط\n"
-        "3. reason: حداکثر ۱ جمله کوتاه و بامزه — بگو چی رو فهمید و کجا لنگید\n"
+        "3. reason: حداکثر ۱ جمله کوتاه و بامزه\n"
         "4. winner_idx: شماره بهترین پاسخ\n"
         "5. summary: ۱ جمله بامزه و کارآگاهی\n"
-        "6. لحن: خودمونی، باحال، بدون تعارف خشک\n"
+        "6. لحن: خودمونی، باحال\n"
     )
-
     user_prompt = (
         f"معما: {riddle['title']}\n"
         f"سوال: {riddle['question']}\n"
@@ -947,10 +941,8 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
         f"پاسخ‌ها:\n{answers_txt}\n\n"
         f"تحلیل کن."
     )
-
     msgs = [{"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt}]
-
     for model in AI_MODELS:
         for att in range(2):
             try:
@@ -975,7 +967,6 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
             except Exception as e:
                 logger.warning(f"riddle analyze {model}: {e}")
                 await asyncio.sleep(0.4)
-
     return {
         "analyses": [{"idx": a["idx"], "verdict": "wrong", "score": 0,
                       "reason": "تحلیل در دسترس نیست."} for a in answers_list],
@@ -1204,9 +1195,6 @@ def build_challenge_text(cid, title, question, ch_type, options, deadline):
     return body + extra
 
 
-# ═══════════════════════════════════════════════════════════
-# 🧠 QUIZ
-# ═══════════════════════════════════════════════════════════
 def create_setup_game(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
          "admin_id": aid, "group_id": gid, "categories": [],
@@ -1425,11 +1413,16 @@ def quiz_category_buttons(g):
     return btns
 
 
+# ═══════════════════════════════════════════════════════════
+# 🐛 FIX: quiz_ask_question — انتظار کامل برای تایمر قدیمی
+# ═══════════════════════════════════════════════════════════
 async def quiz_ask_question(g, uid, ci):
     k, e, cn = QUIZ_CATEGORIES[ci]; gid = g["group_id"]
     if g.get("turn_msg_id"):
         try: await client.delete_messages(gid, g["turn_msg_id"]); g["turn_msg_id"] = None
         except Exception: pass
+    await _stop_task_safe(g.get("timeout_task"), settle=0)
+    g["timeout_task"] = None
     wm = await safe_send(gid, f"{E('brain','🧠')} <b>AI در حال ساخت سوال...</b>\n{DIV}\n\n"
                              f"{e} دسته: <b>{h(cn)}</b>\n{E('bolt','⚡')} <i>چند لحظه...</i>",
                          parse_mode="html")
@@ -1461,9 +1454,6 @@ async def quiz_ask_question(g, uid, ci):
     except Exception: pass
     sent = await safe_send(gid, text, buttons=btns, parse_mode="html")
     if sent: g["current_question"]["msg_id"] = sent.id
-    if g.get("timeout_task"):
-        try: g["timeout_task"].cancel()
-        except Exception: pass
     g["timeout_task"] = asyncio.create_task(quiz_live_countdown(g, uid, total))
 
 
@@ -1495,6 +1485,7 @@ async def quiz_live_countdown(g, uid, total):
                     f"{E('bolt','⚡')} درست <b>+1</b> | غلط <b>-1</b>\n"
                     f"{E('star','⭐')} امتیاز: <code>{p['score']}</code>\n{DIV}\n\n"
                     f"{E('target','🎯')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:")
+            if cq.get("answered"): return
             if text != last_shown:
                 ok = await safe_edit_msg(gid, cq["msg_id"], text, buttons=btns)
                 if ok: last_shown = text
@@ -1510,7 +1501,9 @@ async def quiz_live_countdown(g, uid, total):
 async def quiz_handle_timeout(g, uid):
     cq = g.get("current_question")
     if not cq or cq.get("answered"): return
-    cq["answered"] = True; p = g["players"].get(uid)
+    cq["answered"] = True
+    g["timeout_task"] = None
+    p = g["players"].get(uid)
     if not p: return
     p["score"] -= 1; ct = cq["options"][cq["correct"]]
     labels = ["۱", "۲", "۳", "۴"]; btns = []
@@ -1548,33 +1541,46 @@ async def quiz_answer(g, uid, ai):
     cq = g.get("current_question")
     if not cq or cq.get("answered") or cq["player"] != uid: return
     cq["answered"] = True
-    if g.get("timeout_task"):
-        try: g["timeout_task"].cancel()
-        except Exception: pass
+    # ✅ fix: انتظار کامل برای توقف تایمر
+    await _stop_task_safe(g.get("timeout_task"), settle=0.4)
+    g["timeout_task"] = None
     p = g["players"][uid]; correct = cq["correct"]; ok = (ai == correct)
     ct = cq["options"][correct]; ch = cq["options"][ai]
     btns = _bb(cq["options"], correct, pick=ai)
     if ok:
         p["score"] += 1
-        text = (f"{E('party','🎉')}🎊 <b>H O O R A ! ! !</b> 🎊{E('party','🎉')}\n{DIV}\n\n"
-                f"{E('sparkle','✨')} <b>{h(p['name'])} عزیز، درست زدی!</b> {E('sparkle','✨')}\n"
-                f"{DIV2}\n\n{E('check','✅')} <b>انتخاب تو:</b>  <code>{h(ch)}</code>\n"
-                f"{E('check','✅')} <b>جواب صحیح:</b>  <code>{h(ct)}</code>\n\n"
-                f"{E('fire','🔥')} <b>آفرین! فوق‌العاده بود!</b>\n"
-                f"{E('bolt','⚡')} امتیاز:  <code>+1</code>\n"
-                f"{E('star','⭐')} امتیاز کل:  <code>{p['score']}</code>\n{DIV}\n"
-                f"{E('rocket','🚀')} <i>همینطوری ادامه بده قهرمان!</i>")
+        text = (
+            f"{E('party','🎉')} <b>H O O R A ! ! !</b> {E('party','🎉')}\n"
+            f"{DIV}\n\n"
+            f"{E('sparkle','✨')} <b>{h(p['name'])} عزیز، درست زدی!</b> {E('sparkle','✨')}\n"
+            f"{DIV2}\n\n"
+            f"{E('check','✅')} <b>انتخاب تو:</b>  <code>{h(ch)}</code>\n"
+            f"{E('check','✅')} <b>جواب صحیح:</b>  <code>{h(ct)}</code>\n\n"
+            f"{E('fire','🔥')} <b>آفرین! فوق‌العاده بود!</b>\n"
+            f"{E('bolt','⚡')} امتیاز:  <code>+1</code>\n"
+            f"{E('star','⭐')} امتیاز کل:  <code>{p['score']}</code>\n"
+            f"{DIV}\n"
+            f"{E('rocket','🚀')} <i>همینطوری ادامه بده قهرمان!</i>"
+        )
     else:
         p["score"] -= 1
-        text = (f"{E('warning','😢')} <b>O O P S ! ! !</b> {E('warning','😢')}\n{DIV}\n\n"
-                f"{E('alert','⚠️')} <b>{h(p['name'])} جان، اشتباه بود</b>\n{DIV2}\n\n"
-                f"{E('cross','❌')} <b>انتخاب تو:</b>  <code>{h(ch)}</code>\n"
-                f"{E('check','✅')} <b>جواب درست:</b>  <code>{h(ct)}</code>\n\n"
-                f"{E('bolt','⚡')} امتیاز:  <code>-1</code>\n"
-                f"{E('star','⭐')} امتیاز کل:  <code>{p['score']}</code>\n{DIV}\n"
-                f"{E('magic','✨')} <i>اشکال نداره، نوبت بعدی جبران می‌کنی!</i>")
+        text = (
+            f"{E('warning','😢')} <b>O O P S ! ! !</b> {E('warning','😢')}\n"
+            f"{DIV}\n\n"
+            f"{E('alert','⚠️')} <b>{h(p['name'])} جان، اشتباه بود</b>\n"
+            f"{DIV2}\n\n"
+            f"{E('cross','❌')} <b>انتخاب تو:</b>  <code>{h(ch)}</code>\n"
+            f"{E('check','✅')} <b>جواب درست:</b>  <code>{h(ct)}</code>\n\n"
+            f"{E('bolt','⚡')} امتیاز:  <code>-1</code>\n"
+            f"{E('star','⭐')} امتیاز کل:  <code>{p['score']}</code>\n"
+            f"{DIV}\n"
+            f"{E('magic','✨')} <i>اشکال نداره، نوبت بعدی جبران می‌کنی!</i>"
+        )
     if cq.get("msg_id"):
-        await safe_edit_msg(g["group_id"], cq["msg_id"], text, buttons=btns)
+        for _try in range(3):
+            ok_edit = await safe_edit_msg(g["group_id"], cq["msg_id"], text, buttons=btns)
+            if ok_edit: break
+            await asyncio.sleep(0.35)
     await asyncio.sleep(2.5)
     if await quiz_check_target(g): return
     g["current_index"] += 1; await quiz_next_turn(g)
@@ -1584,9 +1590,8 @@ async def quiz_skip_turn(g):
     if g["state"] != "playing": return
     cur = g.get("current_player")
     if not cur: return
-    if g.get("timeout_task"):
-        try: g["timeout_task"].cancel()
-        except Exception: pass
+    await _stop_task_safe(g.get("timeout_task"), settle=0.4)
+    g["timeout_task"] = None
     p = g["players"].get(cur); pn = p["name"] if p else "?"
     if g.get("turn_msg_id"):
         try: await client.delete_messages(g["group_id"], g["turn_msg_id"]); g["turn_msg_id"] = None
@@ -1596,10 +1601,13 @@ async def quiz_skip_turn(g):
         cq["answered"] = True
         if cq.get("msg_id"):
             nb = _bb(cq["options"], cq["correct"])
-            await safe_edit_msg(g["group_id"], cq["msg_id"],
-                text=(f"{E('skip','⏭')} <b>نوبت رد شد</b>\n{DIV}\n\n"
-                      f"{E('user','👤')} <b>{h(pn)}</b>\n"
-                      f"{E('info','ℹ️')} ادمین این نوبت رو رد کرد"), buttons=nb)
+            for _try in range(3):
+                ok_edit = await safe_edit_msg(g["group_id"], cq["msg_id"],
+                    text=(f"{E('skip','⏭')} <b>نوبت رد شد</b>\n{DIV}\n\n"
+                          f"{E('user','👤')} <b>{h(pn)}</b>\n"
+                          f"{E('info','ℹ️')} ادمین این نوبت رو رد کرد"), buttons=nb)
+                if ok_edit: break
+                await asyncio.sleep(0.35)
         if p: p["asked"] += 1
     await safe_send(g["group_id"],
                     f"{E('skip','⏭')} <b>نوبت {h(pn)} رد شد</b>\n"
@@ -1611,9 +1619,8 @@ async def quiz_skip_turn(g):
 
 async def quiz_finish(g, winner_uid=None):
     g["state"] = "finished"
-    try:
-        if g.get("timeout_task"): g["timeout_task"].cancel()
-    except Exception: pass
+    await _stop_task_safe(g.get("timeout_task"), settle=0)
+    g["timeout_task"] = None
     ps = g["players"]; sp = sorted(ps.items(), key=lambda x: x[1]["score"], reverse=True)
     if winner_uid and winner_uid in ps:
         w = ps[winner_uid]
@@ -1816,6 +1823,9 @@ async def td_start_game(g):
     await asyncio.sleep(2); await td_next_turn(g)
 
 
+# ═══════════════════════════════════════════════════════════
+# 🐛 FIX: td_next_turn — جلوگیری از self-cancel
+# ═══════════════════════════════════════════════════════════
 async def td_next_turn(g):
     if g["state"] != "playing": return
     if not g["order"]: await td_finish(g); return
@@ -1854,8 +1864,11 @@ async def td_next_turn(g):
             f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
     sent = await safe_send(g["group_id"], text, buttons=rows, parse_mode="html")
     if sent: g["turn_msg_id"] = sent.id
-    if g.get("timeout_task"):
-        try: g["timeout_task"].cancel()
+    # ✅ fix: خودت رو cancel نکن
+    cur_task = asyncio.current_task()
+    old_task = g.get("timeout_task")
+    if old_task and old_task is not cur_task and not old_task.done():
+        try: old_task.cancel()
         except Exception: pass
     g["timeout_task"] = asyncio.create_task(td_live_countdown(g, uid, total))
 
@@ -1893,6 +1906,7 @@ async def td_live_countdown(g, uid, total):
                     f"  {E('bolt','⚡')} <b>جرعت</b>  <i>— چالش بامزه</i>\n"
                     f"  {E('heart','💋')} <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
                     f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
+            if g.get("current_player") != uid or g.get("current_state") != "picking_choice": return
             if text != last_shown:
                 ok = await safe_edit_msg(gid, g["turn_msg_id"], text, buttons=rows)
                 if ok: last_shown = text
@@ -1917,10 +1931,9 @@ async def td_play(g, uid, kind):
     if g.get("turn_msg_id"):
         try: await client.delete_messages(gid, g["turn_msg_id"]); g["turn_msg_id"] = None
         except Exception: pass
-    if g.get("timeout_task"):
-        try: g["timeout_task"].cancel()
-        except Exception: pass
-    if g.get("auto_next_task"):
+    await _stop_task_safe(g.get("timeout_task"), settle=0.3)
+    g["timeout_task"] = None
+    if g.get("auto_next_task") and not g["auto_next_task"].done():
         try: g["auto_next_task"].cancel()
         except Exception: pass
     label = next((n for k, e, n in TD_CATEGORIES_ALL if k == kind), kind)
@@ -1967,10 +1980,11 @@ async def td_skip_turn(g):
     if g["state"] != "playing": return
     cur = g.get("current_player")
     if not cur: return
-    for t in ("timeout_task", "auto_next_task"):
-        if g.get(t):
-            try: g[t].cancel()
-            except Exception: pass
+    await _stop_task_safe(g.get("timeout_task"), settle=0.3)
+    g["timeout_task"] = None
+    if g.get("auto_next_task") and not g["auto_next_task"].done():
+        try: g["auto_next_task"].cancel()
+        except Exception: pass
     p = g["players"].get(cur); pn = p["name"] if p else "?"
     if g.get("turn_msg_id"):
         try: await client.delete_messages(g["group_id"], g["turn_msg_id"]); g["turn_msg_id"] = None
@@ -1984,10 +1998,11 @@ async def td_skip_turn(g):
 
 async def td_finish(g):
     g["state"] = "finished"
-    for t in ("timeout_task", "auto_next_task"):
-        if g.get(t):
-            try: g[t].cancel()
-            except Exception: pass
+    await _stop_task_safe(g.get("timeout_task"), settle=0)
+    g["timeout_task"] = None
+    if g.get("auto_next_task") and not g["auto_next_task"].done():
+        try: g["auto_next_task"].cancel()
+        except Exception: pass
     ps = g["players"]
     lines = [f"{E('flag','🏁')} <b>بازی جرعت یا حقیقت تموم شد!</b>\n{DIV}\n\n",
              f"{E('stats','📊')} <b>خلاصه بازیکنان:</b>"]
@@ -2003,7 +2018,7 @@ async def td_finish(g):
 
 
 # ═══════════════════════════════════════════════════════════
-# 🕵️ RIDDLE ENGINE
+# 🕵️ RIDDLE
 # ═══════════════════════════════════════════════════════════
 def create_riddle_setup(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
@@ -2142,7 +2157,6 @@ async def riddle_broadcast(g):
     g["start_time"] = time.time()
     g["state"] = "playing"
     RIDDLE_ACTIVE_GAMES[g["group_id"]] = g
-
     g["timer_task"] = asyncio.create_task(riddle_timer(g))
     hints = g["riddle"].get("hints", [])[:2]
     for i, hint in enumerate(hints):
@@ -2192,33 +2206,24 @@ async def riddle_finish(g):
         except Exception: pass
     gid = g["group_id"]; r = g["riddle"]
     answers = g.get("answers", {})
-
     await safe_send(gid,
                     f"{E('hourglass','⏰')} <b>وقت تموم شد!</b>\n"
                     f"{E('check','✅')} <b>جواب:</b>  <i>{h(r['answer'])}</i>",
                     parse_mode="html")
     await asyncio.sleep(1.5)
-
     if not answers:
-        await safe_send(gid,
-                        f"{E('info','ℹ️')} هیچ‌کس جواب نداد!",
-                        parse_mode="html")
+        await safe_send(gid, f"{E('info','ℹ️')} هیچ‌کس جواب نداد!", parse_mode="html")
         RIDDLE_ACTIVE_GAMES.pop(gid, None); return
-
     answers_list = []
     for i, (uid, info) in enumerate(answers.items(), 1):
         answers_list.append({"idx": i, "user_id": uid, "name": info["name"],
                              "username": info.get("username"), "answer": info["answer"]})
-
-    wm = await safe_send(gid, f"{E('brain','🧠')} <i>کارآگاه در حال تحلیل...</i>",
-                          parse_mode="html")
+    wm = await safe_send(gid, f"{E('brain','🧠')} <i>کارآگاه در حال تحلیل...</i>", parse_mode="html")
     result = await ai_analyze_riddle_answers(r, answers_list)
     try: await wm.delete()
     except Exception: pass
-
     analyses = {a.get("idx"): a for a in result.get("analyses", []) if isinstance(a, dict)}
     winner_idx = result.get("winner_idx", 0)
-
     scored = []
     for a in answers_list:
         aidx = a["idx"]; an = analyses.get(aidx, {})
@@ -2230,28 +2235,18 @@ async def riddle_finish(g):
             "is_winner": aidx == winner_idx
         })
     scored.sort(key=lambda x: x["score"], reverse=True)
-
-    lines = [
-        f"{E('detective','🕵️')}  <b>گزارش کارآگاه</b>  {E('detective','🕵️')}",
-        f"{DIV}",
-        f""
-    ]
+    lines = [f"{E('detective','🕵️')}  <b>گزارش کارآگاه</b>  {E('detective','🕵️')}", f"{DIV}", f""]
     medals = ["🥇", "🥈", "🥉"]
     for i, s in enumerate(scored):
         u = s["user"]
         v_emoji = {"correct": "✅", "close": "⚠️", "wrong": "❌"}.get(s["verdict"], "❌")
         crown = f" {E('crown','👑')}" if s["is_winner"] else ""
         rank = medals[i] if i < 3 else f"{i+1}."
-        lines.append(
-            f"{rank} {v_emoji} <b>{h(u['name'])}</b>{crown}  "
-            f"<code>{s['score']}/10</code>"
-        )
+        lines.append(f"{rank} {v_emoji} <b>{h(u['name'])}</b>{crown}  <code>{s['score']}/10</code>")
         lines.append(f"     <i>{h(s['reason'])}</i>")
         lines.append("")
-
     lines.append(f"{DIV}")
     lines.append(f"{E('crown','👑')} <i>{h(result.get('summary', '—'))}</i>")
-
     full = "\n".join(lines)
     if len(full) > 4000:
         chunks = [full[i:i+3500] for i in range(0, len(full), 3500)]
@@ -2260,12 +2255,10 @@ async def riddle_finish(g):
             await asyncio.sleep(0.5)
     else:
         await safe_send(gid, full, parse_mode="html")
-
     for s in scored:
         if s["score"] > 0:
             try: db.add_points(s["user"]["user_id"], s["user"]["name"], s["score"], joined=True)
             except Exception: pass
-
     RIDDLE_ACTIVE_GAMES.pop(gid, None)
 
 
@@ -2283,7 +2276,6 @@ async def on_group_message(event):
             try: db.save_group(event.chat_id, chat.title, getattr(chat, "username", None))
             except Exception: pass
         raw = (event.raw_text or "").strip()
-
         rid = RIDDLE_ACTIVE_GAMES.get(event.chat_id)
         if (rid and rid.get("state") == "playing" and rid.get("message_id")
                 and event.reply_to_msg_id == rid["message_id"]):
@@ -2297,12 +2289,9 @@ async def on_group_message(event):
             rid["answers"][uid] = {"name": name, "username": uu,
                                     "answer": raw[:800], "at": time.time()}
             try:
-                await event.reply(
-                    f"{E('check','✅')} <b>ثبت شد، {h(name)}!</b>",
-                    parse_mode="html")
+                await event.reply(f"{E('check','✅')} <b>ثبت شد، {h(name)}!</b>", parse_mode="html")
             except Exception: pass
             return
-
         if ("مهراد" in raw and "یاس" in raw) or raw in ("مهراد", "یاس", "مهراد یاس", "یاس مهراد"):
             await safe_reply(event,
                              f"{E('fire','🔥')}  <b>دو عشق دیرینه</b>  {E('heart','💖')}\n"
@@ -2314,7 +2303,6 @@ async def on_group_message(event):
                              parse_mode="html")
             return
         if not is_admin(event.sender_id): return
-
         if raw in ("جرعت", "حقیقت", "جرعت حقیقت", "جرعت یا حقیقت"):
             uid = event.sender_id
             game = create_td_setup(uid, event.chat_id)
@@ -2401,7 +2389,6 @@ async def on_private(event):
         uname = user_name(sender)
         username = getattr(sender, "username", None) if sender else None
         db.save_user(uid, uname, username)
-
         if raw.startswith("/start"):
             parts = raw.split(None, 1)
             payload = parts[1].strip() if len(parts) > 1 else ""
@@ -2457,7 +2444,6 @@ async def on_private(event):
                                    f"{E('heart','💌')} پیام ناشناس\n\n"
                                    f"{E('info','ℹ️')} /help", parse_mode="html")
             return
-
         if raw == "/help":
             await safe_respond(event, f"{E('info','ℹ️')} /me /top /mylink /help", parse_mode="html"); return
         if raw == "/me":
@@ -2522,7 +2508,6 @@ async def on_private(event):
             for c_ in res[:10]:
                 lines.append(f"{E('diamond','💎')} <b>#{c_['id']}</b> {h(c_['title'])}")
             await safe_respond(event, "\n".join(lines), parse_mode="html"); return
-
         st = get_state(uid)
         if st:
             state = st.get("state"); data = st.get("data", {})
@@ -2621,7 +2606,6 @@ async def on_private(event):
                                     f"<blockquote>{h(raw)}</blockquote>", parse_mode="html")
                 except Exception: pass
                 return
-
         if is_admin(uid): await send_admin_menu(event)
         else:
             await safe_respond(event,
@@ -2654,9 +2638,6 @@ async def _ask_group(event, data):
     await safe_respond(event, f"{E('group','🏢')} کدوم گروه؟", buttons=btns, parse_mode="html")
 
 
-# ═══════════════════════════════════════════════════════════
-# 📞 CALLBACK HANDLER
-# ═══════════════════════════════════════════════════════════
 @client.on(events.CallbackQuery())
 async def on_cb(event):
     try:
@@ -2902,7 +2883,7 @@ async def on_cb(event):
             if g.get("current_player") != uid: await event.answer("⛔ فقط بازیکن نوبت!", alert=True); return
             if g.get("current_state") != "waiting_done": await event.answer("⚠️", alert=True); return
             await event.answer("✅ نفر بعدی...")
-            if g.get("auto_next_task"):
+            if g.get("auto_next_task") and not g["auto_next_task"].done():
                 try: g["auto_next_task"].cancel()
                 except Exception: pass
             g["current_state"] = "moving_on"; g["current_index"] += 1
@@ -2922,7 +2903,7 @@ async def on_cb(event):
             if not is_admin(uid): await event.answer("⛔", alert=True); return
             await event.answer("▶️")
             if g.get("current_state") == "moving_on": return
-            if g.get("auto_next_task"):
+            if g.get("auto_next_task") and not g["auto_next_task"].done():
                 try: g["auto_next_task"].cancel()
                 except Exception: pass
             g["current_state"] = "moving_on"; g["current_index"] += 1
@@ -3039,9 +3020,7 @@ async def on_cb(event):
                                 parse_mode="html", buttons=None)
             except Exception: pass
             return
-
         if not is_admin(uid): await event.answer("⛔", alert=True); return
-
         if data == "new_text":
             set_state(uid, "awaiting_title", type="text"); await event.answer()
             await safe_edit(event, f"{E('diamond','💎')} <b>چالش متنی</b>\n{DIV}\n\nعنوان:",
@@ -3287,7 +3266,7 @@ async def main():
     logger.info(f"👥 Admins ({len(ALL_ADMINS)}): {sorted(ALL_ADMINS)}")
     logger.info(f"📚 TD Bank: truth={len(TD_BANK['truth'])} | truth18={len(TD_BANK['truth18'])} | "
                 f"dare={len(TD_BANK['dare'])} | dare18={len(TD_BANK['dare18'])}")
-    logger.info(f"🕵️ Riddle: Simple mode | 🧠 Quiz: Medium difficulty")
+    logger.info(f"🕵️ Riddle: Simple | 🧠 Quiz: Medium | 🐛 All bug fixes applied")
     await start_web_server()
     await client.start(bot_token=BOT_TOKEN)
     me = await client.get_me()
