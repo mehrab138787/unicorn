@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 ✨ UNICORN ANONY BOT — ROYAL EDITION ✨
-+ 🕵️ RIDDLE DETECTIVE MODE v2 (Enhanced)
++ 🕵️ RIDDLE DETECTIVE (Simple)
++ 🧠 QUIZ (Medium Difficulty)
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
@@ -226,7 +227,7 @@ TD_TURNS_OPTIONS = [1, 2, 3, 5]
 TD_TIMEOUT_OPTIONS = [30, 60, 120, 180]
 
 # ═══════════════════════════════════════════════════════════
-# 🕵️ RIDDLE — بازی معما (نسخه تقویت‌شده)
+# 🕵️ RIDDLE
 # ═══════════════════════════════════════════════════════════
 RIDDLE_CATEGORIES = [
     ("murder", "🔪", "قتل و جنایت"),
@@ -778,12 +779,46 @@ def _ai_call_sync(messages, temperature, model, max_tokens=800):
     return r.json()
 
 
+# ═══════════════════════════════════════════════════════════
+# 🧠 QUIZ AI — سطح متوسط
+# ═══════════════════════════════════════════════════════════
 async def ai_generate_question(category):
-    sys_msg = ("Persian quiz maker. Respond ONLY with JSON:\n"
-               '{"question":"متن","options":["1","2","3","4"],"correct":0}\n'
-               "Rules: Persian. correct=0-based. Exactly 4 options. Only one correct. Random position.")
+    sys_msg = (
+        "تو یه طراح سوال کوییز حرفه‌ای هستی.\n"
+        "سوالات سطح متوسط طراحی می‌کنی — نه خیلی ساده، نه خیلی سخت.\n\n"
+
+        "خروجی فقط JSON:\n"
+        '{"question": "متن", "options": ["1","2","3","4"], "correct": 0}\n\n'
+
+        "📏 قوانین طراحی سوال:\n"
+        "1. سوالات نباید خیلی ساده باشن (نه چیزایی که همه می‌دونن)\n"
+        "2. نباید خیلی سخت باشن (نه چیزایی که فقط متخصص می‌دونه)\n"
+        "3. سطح متوسط: کسی که علاقه‌مند هست ولی متخصص نیست بتونه جواب بده\n"
+        "4. جواب باید واضحاً درست باشه، ولی نیاز به یه کم فکر کردن داشته باشه\n"
+        "5. سوالات تکراری و کلیشه‌ای نساز\n"
+        "6. از جزئیات جالب و کم‌شناخته استفاده کن\n\n"
+
+        "❌ از این نوع سوالا خودداری کن:\n"
+        "   - پایتخت فرانسه کجاست؟ (خیلی ساده)\n"
+        "   - چند نفر تو دنیا هست؟ (خیلی کلی)\n"
+        "   - رنگ آسمون چیه؟ (کاملاً واضح)\n\n"
+
+        "✅ از این نوع سوالا استفاده کن:\n"
+        "   - جزئیات تاریخی جالب\n"
+        "   - اعداد و آمار قابل توجه\n"
+        "   - ویژگی‌های منحصر به فرد\n"
+        "   - رکوردها و اولین‌ها\n"
+        "   - ارتباطات بین رشته‌ای\n\n"
+
+        "قوانین ساختار:\n"
+        "- دقیقاً ۴ گزینه\n"
+        "- فقط یک جواب درست\n"
+        "- correct از 0 شروع میشه (0-3)\n"
+        "- جای جواب تصادفی باشه، نه همیشه اول\n"
+        "- گزینه‌ها کوتاه و واضح باشن\n"
+    )
     msgs = [{"role": "system", "content": sys_msg},
-            {"role": "user", "content": f"سوال چهارگزینه‌ای جذاب از «{category}»"}]
+            {"role": "user", "content": f"یه سوال چهارگزینه‌ای سطح متوسط از دسته‌ی «{category}» بساز."}]
     for model in AI_MODELS:
         for att in range(2):
             try:
@@ -808,47 +843,39 @@ async def ai_generate_question(category):
 
 
 # ═══════════════════════════════════════════════════════════
-# 🕵️ RIDDLE AI v2 — کامل، واضح، کارآگاهی
+# 🕵️ RIDDLE AI — ساده و باحال
 # ═══════════════════════════════════════════════════════════
 async def ai_generate_riddle(category, difficulty="متوسط"):
     sys_prompt = (
-        "تو یک نویسنده‌ی حرفه‌ای معمای کارآگاهی به سبک شرلوک هلمز، آگاتا کریستی و پوآرو هستی.\n"
-        "معماهایی می‌سازی که خواننده با دقت در جزئیات، می‌تونه جواب رو خودش کشف کنه.\n\n"
+        "تو یه معمار معمای کارآگاهی باحال و خلاق هستی.\n"
+        "معماهایی می‌سازی که کوتاه، جذاب و قابل حل باشن.\n\n"
 
-        "⚠️ خروجی فقط و فقط JSON با این ساختار (بدون توضیح اضافه، بدون ```):\n"
+        "خروجی فقط JSON:\n"
         "{\n"
-        '  "title": "عنوان جذاب و مرموز",\n'
-        '  "setting": "توضیح کامل صحنه‌ی جرم یا اتفاق (۲-۳ جمله)",\n'
-        '  "story": "داستان کامل با جزئیات دقیق (۱۰ تا ۱۵ جمله)",\n'
-        '  "suspects": ["مظنون ۱ با توضیح کوتاه", "مظنون ۲ با توضیح کوتاه", "مظنون ۳ با توضیح کوتاه"],\n'
-        '  "evidence": ["شاهد یا سرنخ ۱", "شاهد یا سرنخ ۲", "شاهد یا سرنخ ۳"],\n'
-        '  "question": "سوال دقیق و مشخص — مثلاً: قاتل کیه؟ یا: الماس کجا مخفی شده؟",\n'
-        '  "answer": "جواب کامل به همراه توضیح چرا این جواب درسته (۳-۴ جمله)",\n'
-        '  "hints": ["راهنمای ۱", "راهنمای ۲", "راهنمای ۳"]\n'
+        '  "title": "عنوان جذاب و مرموز (حداکثر ۶ کلمه)",\n'
+        '  "story": "داستان ۵ تا ۷ جمله. کوتاه، هیجان‌انگیز، با ۲-۳ سرنخ پنهان.",\n'
+        '  "question": "سوال دقیق و کوتاه (یک خط)",\n'
+        '  "answer": "جواب + یک جمله توضیح چرا",\n'
+        '  "hints": ["راهنمای کوتاه ۱", "راهنمای کوتاه ۲"]\n'
         "}\n\n"
 
-        "📏 قوانین بسیار مهم:\n"
-        "1. داستان باید دقیقاً ۱۰ تا ۱۵ جمله باشه، با جزئیات زمانی، مکانی، شخصیت‌ها\n"
-        "2. توی داستان حداقل ۳ سرنخ پنهان بذار که به جواب اشاره می‌کنن\n"
-        "3. مظنونین باید حداقل ۳ نفر باشن، هرکدوم با انگیزه و فرصت مشخص\n"
-        "4. شواهد باید عینی و قابل استنتاج باشن\n"
-        "5. جواب باید فقط با استدلال از داستان قابل کشف باشه — نه با حدس\n"
-        "6. راهنماها از کلی به جزئی: راهنما ۱ مبهم، راهنما ۲ نزدیک‌تر، راهنما ۳ تقریباً واضح\n"
-        "7. زبان فارسی روان، دقیق، مرموز و جذاب\n"
-        "8. هیچ محتوای مستهجن، خشن گرافیکی، یا غیراخلاقی نداشته باشه\n"
-        "9. از کلمات انگلیسی فقط برای اسم‌های خاص استفاده کن\n"
-        "10. اسم شخصیت‌ها ایرانی و ملموس باشه\n"
+        "قوانین:\n"
+        "1. داستان حداکثر ۷ جمله — نه بیشتر!\n"
+        "2. سرنخ‌ها توی داستان پنهان باشن، خواننده بتونه کشف کنه\n"
+        "3. سوال کوتاه و مستقیم — فقط یک جواب داره\n"
+        "4. راهنماها از کلی به جزئی، هر کدوم یک خط\n"
+        "5. فارسی روان، باحال، مرموز — مثل شرلوک\n"
+        "6. اسم‌های شخصیت‌ها ایرانی\n"
+        "7. هیچ محتوای مستهجن یا خشونت گرافیکی نداشته باشه\n"
     )
-    user_prompt = (f"یک معمای کارآگاهی حرفه‌ای سطح «{difficulty}» از دسته‌ی «{category}» بساز.\n"
-                   f"یادت باشه: داستان ۱۰-۱۵ جمله، ۳ مظنون، ۳ شاهد، ۳ راهنما.\n"
-                   f"همه چیز دقیق، واضح و قابل استنتاج.")
+    user_prompt = f"یه معمای کارآگاهی «{difficulty}» از دسته‌ی «{category}» بساز. کوتاه و باحال."
     msgs = [{"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt}]
     for model in AI_MODELS:
         for att in range(3):
             try:
-                t = 0.85 if att == 0 else (1.0 if att == 1 else 1.15)
-                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model, 2200)
+                t = 0.9 if att == 0 else (1.05 if att == 1 else 1.15)
+                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model, 900)
                 content = data["choices"][0]["message"]["content"].strip()
                 content = re.sub(r"^```json\s*", "", content)
                 content = re.sub(r"^```\s*", "", content)
@@ -856,35 +883,23 @@ async def ai_generate_riddle(category, difficulty="متوسط"):
                 m = re.search(r'\{.*\}', content, re.DOTALL)
                 if m: content = m.group(0)
                 obj = json.loads(content)
-                # Validate
-                required = ["title", "story", "question", "answer", "hints"]
-                for k in required:
+                for k in ["title", "story", "question", "answer", "hints"]:
                     if k not in obj: raise ValueError(f"missing {k}")
-                # Optional fields
-                if "setting" not in obj: obj["setting"] = ""
-                if "suspects" not in obj: obj["suspects"] = []
-                if "evidence" not in obj: obj["evidence"] = []
-                # Normalize
-                if not isinstance(obj["hints"], list): obj["hints"] = [str(obj["hints"])]
-                if not isinstance(obj["suspects"], list): obj["suspects"] = [str(obj["suspects"])]
-                if not isinstance(obj["evidence"], list): obj["evidence"] = [str(obj["evidence"])]
-                obj["title"] = str(obj["title"])[:150]
-                obj["setting"] = str(obj["setting"])[:500]
-                obj["story"] = str(obj["story"])[:3000]
-                obj["question"] = str(obj["question"])[:400]
-                obj["answer"] = str(obj["answer"])[:800]
-                obj["hints"] = [str(x)[:250] for x in obj["hints"][:3]]
-                obj["suspects"] = [str(x)[:200] for x in obj["suspects"][:5]]
-                obj["evidence"] = [str(x)[:200] for x in obj["evidence"][:5]]
-                # چک حداقلی
-                if len(obj["story"]) < 300:
+                if not isinstance(obj["hints"], list):
+                    obj["hints"] = [str(obj["hints"])]
+                obj["title"] = str(obj["title"])[:100]
+                obj["story"] = str(obj["story"])[:1200]
+                obj["question"] = str(obj["question"])[:300]
+                obj["answer"] = str(obj["answer"])[:500]
+                obj["hints"] = [str(x)[:180] for x in obj["hints"][:2]]
+                if len(obj["story"]) < 100:
                     raise ValueError(f"story too short: {len(obj['story'])}")
                 if len(obj["hints"]) < 2:
                     obj["hints"].append("به جزئیات زمانی و مکانی دقت کن.")
-                logger.info(f"✅ Riddle v2: {obj['title'][:50]} via {model} | story={len(obj['story'])}ch | suspects={len(obj['suspects'])}")
+                logger.info(f"✅ Riddle: {obj['title'][:50]} via {model}")
                 return obj
             except Exception as e:
-                logger.warning(f"riddle gen v2 {model} t{att}: {e}")
+                logger.warning(f"riddle gen {model} t{att}: {e}")
                 await asyncio.sleep(0.4)
     return None
 
@@ -892,58 +907,45 @@ async def ai_generate_riddle(category, difficulty="متوسط"):
 async def ai_analyze_riddle_answers(riddle, answers_list):
     if not answers_list:
         return {"analyses": [], "winner_idx": 0,
-                "summary": "متأسفانه هیچ‌کس پاسخی ارسال نکرد. کارآگاه‌ها باید سریع‌تر عمل کنن!"}
+                "summary": "هیچ‌کس جواب نداد — دفعه بعد سریع‌تر باش!"}
 
-    answers_txt = "\n\n".join([
-        f"━━━ کارآگاه #{a['idx']}: {a['name']} ━━━\nپاسخ: {a['answer']}"
-        for a in answers_list
+    answers_txt = "\n".join([
+        f"#{a['idx']} {a['name']}: {a['answer']}" for a in answers_list
     ])
 
     sys_prompt = (
-        "تو یک کارآگاه ارشد، روانشناس جنایی و تحلیل‌گر حرفه‌ای هستی.\n"
-        "وظیفه‌ت: تحلیل دقیق و منصفانه‌ی پاسخ هر بازیکن به یک معمای کارآگاهی.\n\n"
+        "تو یه کارآگاه باحال و تحلیل‌گر حرفه‌ای هستی.\n"
+        "پاسخ هر بازیکن رو کوتاه و بامزه تحلیل می‌کنی.\n\n"
 
-        "⚠️ خروجی فقط JSON با این ساختار:\n"
+        "خروجی فقط JSON:\n"
         "{\n"
         '  "analyses": [\n'
-        '    {\n'
-        '      "idx": 1,\n'
-        '      "verdict": "correct",\n'
-        '      "score": 10,\n'
-        '      "strength": "چه چیزی رو درست فهمید (۱ جمله)",\n'
-        '      "weakness": "چی رو از دست داد یا کجا اشتباه کرد (۱ جمله)",\n'
-        '      "reason": "تحلیل کامل با لحن کارآگاهی جذاب (۲-۳ جمله)"\n'
-        "    }\n"
+        '    {"idx": 1, "verdict": "correct", "score": 10, "reason": "..."}\n'
         "  ],\n"
         '  "winner_idx": 1,\n'
-        '  "summary": "خلاصه‌ی نهایی بازی با لحن کارآگاهی (۳-۴ جمله)"\n'
+        '  "summary": "یک جمله بامزه درباره کل بازی"\n'
         "}\n\n"
 
-        "📏 قوانین تحلیل:\n"
-        "1. verdict یکی از این سه: \"correct\" (دقیقاً درست)، \"close\" (نزدیک بود)، \"wrong\" (اشتباه)\n"
-        "2. score بین 0 تا 10:\n"
-        "   - 10: دقیقاً جواب درست با استدلال\n"
-        "   - 7-9: نزدیک به جواب، منطق درست ولی جزئیات اشتباه\n"
-        "   - 4-6: بعضی سرنخ‌ها رو گرفت ولی به نتیجه‌ی درست نرسید\n"
-        "   - 1-3: تلاش کرد ولی کاملاً بی‌ربط\n"
-        "   - 0: جواب نداد یا چیز بی‌معنی گفت\n"
-        "3. strength و weakness باید مشخص و دقیق باشن، نه کلی\n"
-        "4. reason باید با لحن شرلوک هلمز باشه — جذاب، دقیق، بی‌تعارف\n"
-        "5. winner_idx شماره‌ی کسی که بهترین پاسخ رو داد (بالاترین امتیاز)\n"
-        "6. summary باید حس پایان یه پرونده رو بده\n"
-        "7. اگر کسی جواب درست رو داد، حتماً در reason بهش تبریک بگو\n"
-        "8. اگر کسی اشتباه کرد، با مهربونی ولی صادقانه بگو کجا رو اشتباه فهمید\n"
+        "قوانین:\n"
+        "1. verdict فقط: correct / close / wrong\n"
+        "2. score 0 تا 10:\n"
+        "   - 10: دقیقاً درست\n"
+        "   - 7-9: نزدیک بود\n"
+        "   - 4-6: بعضی سرنخ‌ها رو گرفت\n"
+        "   - 1-3: تلاش کرد ولی اشتباه\n"
+        "   - 0: بی‌ربط\n"
+        "3. reason: حداکثر ۱ جمله کوتاه و بامزه — بگو چی رو فهمید و کجا لنگید\n"
+        "4. winner_idx: شماره بهترین پاسخ\n"
+        "5. summary: ۱ جمله بامزه و کارآگاهی\n"
+        "6. لحن: خودمونی، باحال، بدون تعارف خشک\n"
     )
 
     user_prompt = (
-        f"═══ معمای اصلی ═══\n"
-        f"عنوان: {riddle['title']}\n\n"
-        f"داستان:\n{riddle['story']}\n\n"
-        f"سوال: {riddle['question']}\n\n"
+        f"معما: {riddle['title']}\n"
+        f"سوال: {riddle['question']}\n"
         f"جواب درست: {riddle['answer']}\n\n"
-        f"═══ پاسخ‌های کارآگاهان ═══\n"
-        f"{answers_txt}\n\n"
-        f"حالا همه رو یکی‌یکی تحلیل کن. برای هرکس: چقدر درست بود، چی رو فهمید، چی رو از دست داد."
+        f"پاسخ‌ها:\n{answers_txt}\n\n"
+        f"تحلیل کن."
     )
 
     msgs = [{"role": "system", "content": sys_prompt},
@@ -953,7 +955,7 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
         for att in range(2):
             try:
                 t = 0.5 if att == 0 else 0.7
-                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model, 3000)
+                data = await asyncio.to_thread(_ai_call_sync, msgs, t, model, 1500)
                 content = data["choices"][0]["message"]["content"].strip()
                 content = re.sub(r"^```json\s*", "", content)
                 content = re.sub(r"\s*```$", "", content)
@@ -961,29 +963,24 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
                 if m: content = m.group(0)
                 obj = json.loads(content)
                 if "analyses" not in obj: raise ValueError("no analyses")
-                # Normalize
                 for a in obj["analyses"]:
-                    if "strength" not in a: a["strength"] = ""
-                    if "weakness" not in a: a["weakness"] = ""
-                    if "reason" not in a: a["reason"] = ""
                     if "verdict" not in a: a["verdict"] = "wrong"
                     if "score" not in a: a["score"] = 0
+                    if "reason" not in a: a["reason"] = "—"
                     a["score"] = max(0, min(10, int(a.get("score", 0))))
                 if "winner_idx" not in obj: obj["winner_idx"] = 0
-                if "summary" not in obj: obj["summary"] = "پرونده بسته شد."
-                logger.info(f"✅ Riddle analysis done via {model}")
+                if "summary" not in obj: obj["summary"] = "پرونده بسته شد!"
+                logger.info(f"✅ Riddle analysis via {model}")
                 return obj
             except Exception as e:
                 logger.warning(f"riddle analyze {model}: {e}")
                 await asyncio.sleep(0.4)
 
-    # Fallback
     return {
         "analyses": [{"idx": a["idx"], "verdict": "wrong", "score": 0,
-                      "strength": "—", "weakness": "—",
-                      "reason": "تحلیل خودکار در دسترس نیست."} for a in answers_list],
+                      "reason": "تحلیل در دسترس نیست."} for a in answers_list],
         "winner_idx": 0,
-        "summary": "متأسفانه تحلیل نهایی ناموفق بود. اما همه تلاش کردید!"
+        "summary": "پرونده بسته شد!"
     }
 
 
@@ -1246,7 +1243,7 @@ def render_quiz_welcome(g):
             f"{E('info','ℹ️')} <b>جریان بازی:</b>\n"
             f"  {E('gamepad','🎮')} بازیکنان توی گروه عضو می‌شن\n"
             f"  {E('target','🎯')} نوبتی توی گروه دسته انتخاب می‌کنن\n"
-            f"  {E('brain','🧠')} هوش مصنوعی سوال می‌سازه\n"
+            f"  {E('brain','🧠')} هوش مصنوعی سوال سطح متوسط می‌سازه\n"
             f"  {E('hourglass','⏳')} تایمر زنده هر ثانیه\n"
             f"  {E('bolt','⚡')} درست <b>+1</b> و غلط <b>-1</b>\n\n"
             f"{E('magic','✨')} <i>آماده‌ای؟</i>",
@@ -2006,7 +2003,7 @@ async def td_finish(g):
 
 
 # ═══════════════════════════════════════════════════════════
-# 🕵️ RIDDLE ENGINE v2
+# 🕵️ RIDDLE ENGINE
 # ═══════════════════════════════════════════════════════════
 def create_riddle_setup(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
@@ -2042,13 +2039,11 @@ def render_riddle_welcome(g):
     return (f"{E('detective','🕵️')} <b>بازی معما — UNICORN DETECTIVE</b> {E('detective','🕵️')}\n{DIV}\n\n"
             f"{E('sparkle','✨')} <b>سلام کارآگاه عزیز!</b> {E('wave','👋')}\n\n"
             f"{E('info','ℹ️')} <b>جریان بازی:</b>\n"
-            f"  {E('brain','🧠')} هوش مصنوعی یه معمای کارآگاهی کامل می‌سازه\n"
-            f"     شامل: صحنه، داستان، مظنونین، شواهد، سوال\n"
+            f"  {E('brain','🧠')} AI یه معمای کارآگاهی کوتاه می‌سازه\n"
             f"  {E('message','💬')} کاربران با <b>ریپلای</b> جواب می‌دن\n"
             f"  {E('hourglass','⏳')} زمان {mmss(90)} یا {mmss(120)}\n"
-            f"  {E('clue','🔍')} ۳ راهنما تدریجی نمایش داده می‌شن\n"
-            f"  {E('fire','🔥')} AI جواب‌ها رو جدا تحلیل می‌کنه\n"
-            f"  {E('trophy','🏆')} به هر نفر امتیاز ۰ تا ۱۰ می‌ده\n\n"
+            f"  {E('clue','🔍')} ۲ راهنما تدریجی میاد\n"
+            f"  {E('fire','🔥')} AI جواب‌ها رو تحلیل و امتیاز می‌ده\n\n"
             f"{E('magic','✨')} <i>آماده‌ای کارآگاه؟</i>",
             [[Button.inline("🚀 شروع تنظیمات", data=b"rd_setup")],
              [Button.inline("❌ لغو", data=b"rd_cancel")]])
@@ -2113,64 +2108,29 @@ async def riddle_send_setup_menu(aid, screen="welcome", game=None):
 
 
 def _format_riddle_post(g, remaining=None, total_hint=None):
-    """ساخت متن کامل و واضح معما — با بخش‌بندی مجزا"""
     r = g["riddle"]
     total = g["timeout_sec"] if total_hint is None else total_hint
     lines = [
-        f"{E('detective','🕵️')}  <b>مـعـمـای کـارآگـاهـی</b>  {E('detective','🕵️')}",
+        f"{E('detective','🕵️')}  <b>{h(r['title'])}</b>  {E('detective','🕵️')}",
         f"{DIV}",
         f"",
-        f"{E('fire','🔥')} <b>عنوان:</b>  <b>{h(r['title'])}</b>",
+        f"<blockquote>{h(r['story'])}</blockquote>",
         f"",
+        f"{E('target','🎯')} <b>سوال:</b>  <i>{h(r['question'])}</i>",
+        f"{DIV2}",
     ]
-    # صحنه
-    if r.get("setting"):
-        lines.append(f"{E('globe','🌍')} <b>صحنه‌ی ماجرا:</b>")
-        lines.append(f"<blockquote>{h(r['setting'])}</blockquote>")
-        lines.append(f"{DIV2}")
-        lines.append("")
-    # داستان
-    lines.append(f"{E('book','📖')} <b>داستان کامل:</b>")
-    lines.append(f"<blockquote>{h(r['story'])}</blockquote>")
-    lines.append("")
-    # مظنونین
-    if r.get("suspects"):
-        lines.append(f"{DIV2}")
-        lines.append(f"{E('user','👤')} <b>مظنونین:</b>")
-        for s in r["suspects"]:
-            lines.append(f"   {E('point','👉')} {h(s)}")
-        lines.append("")
-    # شواهد
-    if r.get("evidence"):
-        lines.append(f"{DIV2}")
-        lines.append(f"{E('clue','🔍')} <b>شواهد و سرنخ‌ها:</b>")
-        for s in r["evidence"]:
-            lines.append(f"   {E('eye','👁')} {h(s)}")
-        lines.append("")
-    # سوال
-    lines.append(f"{DIV2}")
-    lines.append(f"{E('target','🎯')} <b>سوال نهایی:</b>")
-    lines.append(f"<blockquote>{h(r['question'])}</blockquote>")
-    lines.append("")
-    # تایمر
-    lines.append(f"{DIV2}")
     if remaining is not None:
         bar = time_bar_colored(remaining, total)
-        tb = time_badge(remaining, total)
         pct = int(100 * remaining / total) if total > 0 else 0
         if remaining <= 5:
-            timer_line = f"{E('alert','🚨')} <b>زود باش! فقط {mmss(max(0, remaining))}</b>"
+            lines.append(f"{E('alert','🚨')} <b>زود باش! {mmss(max(0, remaining))}</b>")
         else:
-            timer_line = f"{tb} <b>زمان باقی‌مانده:</b> <code>{mmss(max(0, remaining))}</code>"
-        lines.append(timer_line)
-        lines.append(f"{bar}  <b>{pct}%</b>")
+            lines.append(f"{E('hourglass','⏳')} <b>{mmss(max(0, remaining))}</b>   {bar}  <b>{pct}%</b>")
     else:
-        lines.append(f"{E('hourglass','⏳')} <b>زمان:</b> <code>{mmss(total)}</code>")
+        lines.append(f"{E('hourglass','⏳')} <b>{mmss(total)}</b>")
     lines.append("")
-    lines.append(f"{DIV2}")
-    lines.append(f"{E('info','ℹ️')} <i>برای شرکت، روی همین پیام <b>ریپلای</b> کن و جوابت رو بنویس</i> {E('point','👇')}")
-    lines.append(f"{E('user','👤')} <b>پاسخ‌ها:</b> <code>{len(g.get('answers', {}))}</code>")
-    lines.append(f"{E('clue','🔍')} <i>راهنماها به مرور میان...</i>")
+    lines.append(f"{E('message','💬')} <i>ریپلای کن و جوابت رو بنویس</i>")
+    lines.append(f"{E('user','👤')} پاسخ‌ها: <code>{len(g.get('answers', {}))}</code>")
     return "\n".join(lines)
 
 
@@ -2184,7 +2144,7 @@ async def riddle_broadcast(g):
     RIDDLE_ACTIVE_GAMES[g["group_id"]] = g
 
     g["timer_task"] = asyncio.create_task(riddle_timer(g))
-    hints = g["riddle"].get("hints", [])[:3]
+    hints = g["riddle"].get("hints", [])[:2]
     for i, hint in enumerate(hints):
         delay = total * (i + 1) / (len(hints) + 1)
         t = asyncio.create_task(riddle_hint_task(g, hint, i + 1, delay))
@@ -2195,17 +2155,13 @@ async def riddle_hint_task(g, hint, idx, delay):
     try: await asyncio.sleep(delay)
     except asyncio.CancelledError: return
     if g.get("state") != "playing": return
-    emojis = ["💡", "🔎", "🎯"]
-    em = emojis[idx - 1] if idx <= len(emojis) else "🔍"
+    em = "💡" if idx == 1 else "🎯"
     await safe_send(g["group_id"],
-                    f"{em} <b>راهنمای {idx} از ۳</b>\n"
-                    f"{DIV2}\n"
-                    f"<blockquote>{h(hint)}</blockquote>",
+                    f"{em} <b>راهنما {idx}:</b>  <i>{h(hint)}</i>",
                     parse_mode="html")
 
 
 async def riddle_timer(g):
-    """شمارش معکوس + آپدیت زنده هر ۱۰ ثانیه"""
     try:
         total = g["timeout_sec"]
         start = time.time()
@@ -2237,116 +2193,73 @@ async def riddle_finish(g):
     gid = g["group_id"]; r = g["riddle"]
     answers = g.get("answers", {})
 
-    # ═══ ۱. اعلام پایان وقت ═══
     await safe_send(gid,
-                    f"{E('hourglass','⏰')}  <b>وقـت تـمـوم شـد!</b>\n"
-                    f"{DIV}\n"
-                    f"{E('brain','🧠')} <i>هوش مصنوعی کارآگاه در حال تحلیل پاسخ‌هاست...</i>",
+                    f"{E('hourglass','⏰')} <b>وقت تموم شد!</b>\n"
+                    f"{E('check','✅')} <b>جواب:</b>  <i>{h(r['answer'])}</i>",
                     parse_mode="html")
-
-    # ═══ ۲. نمایش جواب درست (کامل) ═══
-    answer_text = (
-        f"{E('check','✅')}  <b>جـواب درسـت</b>\n"
-        f"{DIV}\n\n"
-        f"<blockquote>{h(r['answer'])}</blockquote>"
-    )
-    await safe_send(gid, answer_text, parse_mode="html")
-    await asyncio.sleep(2)
+    await asyncio.sleep(1.5)
 
     if not answers:
         await safe_send(gid,
-                        f"{E('info','ℹ️')} <b>هیچ‌کس جواب نداد!</b>\n"
-                        f"{E('magic','✨')} <i>دفعه بعد سریع‌تر باش</i>",
+                        f"{E('info','ℹ️')} هیچ‌کس جواب نداد!",
                         parse_mode="html")
         RIDDLE_ACTIVE_GAMES.pop(gid, None); return
 
-    # ═══ ۳. آماده‌سازی ═══
     answers_list = []
     for i, (uid, info) in enumerate(answers.items(), 1):
         answers_list.append({"idx": i, "user_id": uid, "name": info["name"],
                              "username": info.get("username"), "answer": info["answer"]})
 
-    wm = await safe_send(gid,
-                         f"{E('brain','🧠')} <b>کارآگاه ارشد در حال تحلیل...</b>\n"
-                         f"{DIV}\n"
-                         f"{E('user','👤')} <code>{len(answers_list)}</code> پاسخ در حال بررسی\n"
-                         f"{E('bolt','⚡')} <i>چند لحظه صبر کنید...</i>",
-                         parse_mode="html")
-
+    wm = await safe_send(gid, f"{E('brain','🧠')} <i>کارآگاه در حال تحلیل...</i>",
+                          parse_mode="html")
     result = await ai_analyze_riddle_answers(r, answers_list)
     try: await wm.delete()
     except Exception: pass
 
-    # ═══ ۴. گزارش نهایی ═══
     analyses = {a.get("idx"): a for a in result.get("analyses", []) if isinstance(a, dict)}
     winner_idx = result.get("winner_idx", 0)
 
     scored = []
     for a in answers_list:
         aidx = a["idx"]; an = analyses.get(aidx, {})
-        score = int(an.get("score", 0) or 0)
-        verdict = an.get("verdict", "wrong")
-        reason = an.get("reason", "تحلیلی موجود نیست.")
-        strength = an.get("strength", "")
-        weakness = an.get("weakness", "")
-        scored.append({"idx": aidx, "user": a, "score": score,
-                       "verdict": verdict, "reason": reason,
-                       "strength": strength, "weakness": weakness,
-                       "is_winner": aidx == winner_idx})
+        scored.append({
+            "idx": aidx, "user": a,
+            "score": int(an.get("score", 0) or 0),
+            "verdict": an.get("verdict", "wrong"),
+            "reason": an.get("reason", "—"),
+            "is_winner": aidx == winner_idx
+        })
     scored.sort(key=lambda x: x["score"], reverse=True)
 
-    # Header گزارش
-    header_lines = [
-        f"{E('detective','🕵️')}  <b>گـزارش نـهـایـی کـارآگـاه</b>  {E('detective','🕵️')}",
+    lines = [
+        f"{E('detective','🕵️')}  <b>گزارش کارآگاه</b>  {E('detective','🕵️')}",
         f"{DIV}",
-        f"",
-        f"{E('fire','🔥')} <b>پرونده:</b> {h(r['title'])}",
-        f"{E('user','👤')} <b>تعداد کارآگاهان:</b> <code>{len(scored)}</code>",
-        f"{DIV2}",
+        f""
     ]
-    await safe_send(gid, "\n".join(header_lines), parse_mode="html")
-    await asyncio.sleep(0.5)
-
-    # هر بازیکن جدا
     medals = ["🥇", "🥈", "🥉"]
     for i, s in enumerate(scored):
         u = s["user"]
         v_emoji = {"correct": "✅", "close": "⚠️", "wrong": "❌"}.get(s["verdict"], "❌")
-        v_label = {"correct": "کاملاً درست", "close": "نزدیک بود",
-                   "wrong": "اشتباه"}.get(s["verdict"], "—")
-        crown = f"  {E('crown','👑')}" if s["is_winner"] else ""
-        rank_em = medals[i] if i < 3 else f"<b>{i+1:02d}.</b>"
-        un = f"@{u['username']}" if u.get("username") else "—"
+        crown = f" {E('crown','👑')}" if s["is_winner"] else ""
+        rank = medals[i] if i < 3 else f"{i+1}."
+        lines.append(
+            f"{rank} {v_emoji} <b>{h(u['name'])}</b>{crown}  "
+            f"<code>{s['score']}/10</code>"
+        )
+        lines.append(f"     <i>{h(s['reason'])}</i>")
+        lines.append("")
 
-        lines = [
-            f"{rank_em} {v_emoji} <b>{h(u['name'])}</b>{crown}",
-            f"{DIV2}",
-            f"  {E('id','🆔')} <a href=\"tg://user?id={u['user_id']}\">{u['user_id']}</a>",
-            f"  {E('link','🔗')} {h(un)}",
-            f"  {E('star','⭐')} <b>امتیاز:</b> <code>{s['score']}/10</code>",
-            f"  {E('flag','🏁')} <b>وضعیت:</b> <b>{v_label}</b>",
-        ]
-        if s["strength"]:
-            lines.append(f"  {E('check','✅')} <b>نقاط قوت:</b> {h(s['strength'])}")
-        if s["weakness"]:
-            lines.append(f"  {E('cross','❌')} <b>نقاط ضعف:</b> {h(s['weakness'])}")
-        lines.append(f"  {E('message','💬')} <b>پاسخ:</b> <i>{h(u['answer'][:200])}</i>")
-        if s["reason"]:
-            lines.append(f"  {E('brain','🧠')} <b>تحلیل کارآگاه:</b>")
-            lines.append(f"     <blockquote>{h(s['reason'])}</blockquote>")
-        await safe_send(gid, "\n".join(lines), parse_mode="html")
-        await asyncio.sleep(0.4)
+    lines.append(f"{DIV}")
+    lines.append(f"{E('crown','👑')} <i>{h(result.get('summary', '—'))}</i>")
 
-    # خلاصه نهایی
-    summary_txt = (
-        f"{E('crown','👑')}  <b>خلاصـه‌ی نـهـایـی پـرونـده</b>\n"
-        f"{DIV}\n\n"
-        f"<blockquote>{h(result.get('summary', '—'))}</blockquote>\n\n"
-        f"{E('trophy','🏆')} <b>بهترین کارآگاه:</b> "
-        f"{h(scored[0]['user']['name']) if scored else '—'}\n"
-        f"{E('rocket','🚀')} <i>پرونده بسته شد. تا معمای بعدی، کارآگاهان!</i>"
-    )
-    await safe_send(gid, summary_txt, parse_mode="html")
+    full = "\n".join(lines)
+    if len(full) > 4000:
+        chunks = [full[i:i+3500] for i in range(0, len(full), 3500)]
+        for c in chunks:
+            await safe_send(gid, c, parse_mode="html")
+            await asyncio.sleep(0.5)
+    else:
+        await safe_send(gid, full, parse_mode="html")
 
     for s in scored:
         if s["score"] > 0:
@@ -2371,7 +2284,6 @@ async def on_group_message(event):
             except Exception: pass
         raw = (event.raw_text or "").strip()
 
-        # 🕵️ ثبت پاسخ معما (برای همه کاربران)
         rid = RIDDLE_ACTIVE_GAMES.get(event.chat_id)
         if (rid and rid.get("state") == "playing" and rid.get("message_id")
                 and event.reply_to_msg_id == rid["message_id"]):
@@ -2386,13 +2298,11 @@ async def on_group_message(event):
                                     "answer": raw[:800], "at": time.time()}
             try:
                 await event.reply(
-                    f"{E('check','✅')} <b>ثبت شد، {h(name)}!</b>\n"
-                    f"{E('info','ℹ️')} <i>منتظر پایان زمان باش...</i>",
+                    f"{E('check','✅')} <b>ثبت شد، {h(name)}!</b>",
                     parse_mode="html")
             except Exception: pass
             return
 
-        # 💖 Easter egg
         if ("مهراد" in raw and "یاس" in raw) or raw in ("مهراد", "یاس", "مهراد یاس", "یاس مهراد"):
             await safe_reply(event,
                              f"{E('fire','🔥')}  <b>دو عشق دیرینه</b>  {E('heart','💖')}\n"
@@ -2753,7 +2663,6 @@ async def on_cb(event):
         uid = event.sender_id
         data = event.data.decode("utf-8", "ignore")
 
-        # ═══ RIDDLE ═══
         if data == "rd_setup":
             g = RIDDLE_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
@@ -2809,9 +2718,7 @@ async def on_cb(event):
             try:
                 await safe_edit(event,
                                 f"{E('brain','🧠')} <b>در حال ساخت معمای کارآگاهی...</b>\n"
-                                f"{DIV}\n\n"
-                                f"{E('info','ℹ️')} AI داره داستان، مظنونین، شواهد و راهنماها رو می‌سازه\n"
-                                f"{E('hourglass','⏳')} <i>ممکنه ۲۰-۳۰ ثانیه طول بکشه...</i>",
+                                f"{E('bolt','⚡')} <i>چند لحظه صبر کن...</i>",
                                 parse_mode="html", buttons=None)
             except Exception: pass
             cat_key = random.choice(g["categories"])
@@ -2825,17 +2732,12 @@ async def on_cb(event):
             try:
                 await safe_edit(event,
                                 f"{E('check','✅')} <b>معما ساخته شد!</b>\n{DIV}\n\n"
-                                f"{E('fire','🔥')} <b>{h(r['title'])}</b>\n"
-                                f"{E('list','📋')} داستان: <code>{len(r['story'])}</code> کاراکتر\n"
-                                f"{E('user','👤')} مظنونین: <code>{len(r.get('suspects', []))}</code>\n"
-                                f"{E('clue','🔍')} شواهد: <code>{len(r.get('evidence', []))}</code>\n"
-                                f"{E('info','ℹ️')} راهنماها: <code>{len(r.get('hints', []))}</code>\n\n"
+                                f"{E('fire','🔥')} <b>{h(r['title'])}</b>\n\n"
                                 f"{E('rocket','🚀')} توی گروه پست می‌شه...",
                                 parse_mode="html", buttons=None)
             except Exception: pass
             await riddle_broadcast(g); return
 
-        # ═══ QUIZ ═══
         if data == "quiz_join":
             g = _find_game_for_callback(event)
             if not g: await event.answer("❌ بازی پیدا نشد!", alert=True); return
@@ -2960,7 +2862,6 @@ async def on_cb(event):
             SETUP_GAMES.pop(uid, None)
             await quiz_broadcast_join(g); return
 
-        # ═══ TD ═══
         if data == "td_join":
             g = _find_td_game(event)
             if not g: await event.answer("❌", alert=True); return
@@ -3386,7 +3287,7 @@ async def main():
     logger.info(f"👥 Admins ({len(ALL_ADMINS)}): {sorted(ALL_ADMINS)}")
     logger.info(f"📚 TD Bank: truth={len(TD_BANK['truth'])} | truth18={len(TD_BANK['truth18'])} | "
                 f"dare={len(TD_BANK['dare'])} | dare18={len(TD_BANK['dare18'])}")
-    logger.info(f"🕵️ Riddle v2: Enhanced (full story + suspects + evidence + 3 hints)")
+    logger.info(f"🕵️ Riddle: Simple mode | 🧠 Quiz: Medium difficulty")
     await start_web_server()
     await client.start(bot_token=BOT_TOKEN)
     me = await client.get_me()
@@ -3399,7 +3300,8 @@ async def main():
                         f"{E('rocket','🚀')} @{BOT_USERNAME}\n"
                         f"{E('id','🆔')} <code>{me.id}</code>\n"
                         f"{E('crown','👑')} ادمین‌ها: <code>{len(ALL_ADMINS)}</code>\n"
-                        f"{E('detective','🕵️')} معما v2: <b>فعال</b>\n"
+                        f"{E('detective','🕵️')} معما: <b>فعال</b>\n"
+                        f"{E('brain','🧠')} کوییز: <b>سطح متوسط</b>\n"
                         f"{E('time','⏱')} {now_str()}",
                         parse_mode="html")
     except Exception as e: logger.warning(f"notify owner: {e}")
