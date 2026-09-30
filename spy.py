@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-🕵️ UNICORN SPY GAME — Detective Edition v2.0
+🕵️ UNICORN SPY GAME — Detective Edition v2.1
 هوش مصنوعی: انتخاب کلمه + تحلیل کلمات + بررسی حدس جاسوس
 + حالت‌های چند‌جاسوسه + XP + لیدربورد + دستاورد + تایمر زنده
-+ رای مخفی + AI Narrator + کلمات ممنوعه + Rematch
++ رای مخفی + AI Narrator + Rematch
+(نسخه بدون کلمات ممنوعه)
 """
 
 import re, random, asyncio, logging, time, json
@@ -296,32 +297,6 @@ class SpyGame:
                     await asyncio.sleep(0.4)
         return {"main": "پرتقال", "alt": "نارنگی", "category": "میوه"}
 
-    async def ai_pick_forbidden(self, word, category):
-        """🚫 AI چند کلمه‌ی ممنوعه انتخاب می‌کنه"""
-        sys_msg = (
-            "تو داور بازی جاسوسی.\n"
-            "خروجی فقط JSON:\n"
-            '{"forbidden": ["کلمه1", "کلمه2", "کلمه3"]}\n\n'
-            f"کلمه مخفی: «{word}» — دسته: «{category}»\n"
-            "سه کلمه‌ی خیلی نزدیک به کلمه اصلی که بازی‌کنا نباید مستقیم بگن رو انتخاب کن.\n"
-            "کلمه‌ها تک‌کلمه‌ای و فارسی باشن. فقط JSON"
-        )
-        msgs = [{"role": "system", "content": sys_msg},
-                {"role": "user", "content": "سه کلمه ممنوعه بده."}]
-        for model in self.ai_models[:2]:
-            for att in range(2):
-                try:
-                    data = await asyncio.to_thread(self._ai_call,
-                        msgs, 0.6, model, 200, True)
-                    obj = json.loads(data["choices"][0]["message"]["content"])
-                    fw = [str(x).strip() for x in obj.get("forbidden", []) if str(x).strip()]
-                    fw = [x for x in fw if normalize_fa(x) != normalize_fa(word)][:3]
-                    if fw: return fw
-                except Exception as e:
-                    logger.warning(f"forbidden fail {model}: {e}")
-                    await asyncio.sleep(0.3)
-        return []
-
     async def ai_give_hint(self, word, category):
         """💡 AI یه راهنمای مبهم می‌ده"""
         sys_msg = (
@@ -495,7 +470,6 @@ class SpyGame:
                 streak = (row.get("streak") or 0) if row else 0
                 new_streak = streak + 1 if won else 0
 
-                # چک دستاوردها
                 total_wins = ((row.get("wins") or 0) if row else 0) + win_inc
                 spy_wins = ((row.get("spy_wins") or 0) if row else 0) + spy_win_inc
                 civ_wins = ((row.get("civ_wins") or 0) if row else 0) + civ_win_inc
@@ -546,7 +520,6 @@ class SpyGame:
                     new_streak, new_streak,
                     json.dumps(all_achs, ensure_ascii=False), now_ts()
                 ))
-                # log new achievements
                 for k in new_achs:
                     nm = SPY_ACHIEVEMENTS.get(k, ("", k))[1]
                     c.execute("""INSERT INTO spy_achievements_log
@@ -555,12 +528,6 @@ class SpyGame:
                         (uid, k, nm, game["group_id"], now_ts()))
             except Exception as e:
                 logger.warning(f"save stats {uid}: {e}")
-
-        # ذخیره دستاوردهای جدید برای اعلان
-        game["_new_achievements"] = []
-        for uid in game["players"]:
-            for k in []:  # پر می‌شه در جای دیگه
-                pass
 
     async def _fetch_leaderboard(self, limit=10):
         try:
@@ -807,7 +774,6 @@ class SpyGame:
             "turn_task": None,
             "vote_task": None,
             "countdown_task": None,
-            "forbidden": [],
             "round_marker": 1,
             "round_spoken": set(),
             "spy_never_caught": True,
@@ -929,7 +895,7 @@ class SpyGame:
 
         # حالت مخفی: دو کلمه مشابه
         if mode_key == "undercover":
-            pair = await ai_pick_undercover_pair_safe(self)
+            pair = await self.ai_pick_undercover_pair()
             game["word"] = pair["main"]
             game["word_alt"] = pair["alt"]
             game["category"] = pair.get("category", "")
@@ -938,13 +904,6 @@ class SpyGame:
             game["word"] = w["word"]
             game["word_alt"] = None
             game["category"] = w.get("category", "")
-
-        # کلمات ممنوعه
-        try:
-            game["forbidden"] = await self.ai_pick_forbidden(
-                game["word"], game.get("category", ""))
-        except Exception:
-            game["forbidden"] = []
 
         # انتخاب جاسوس(ها)
         n_spies = mode["spies"]
@@ -989,7 +948,6 @@ class SpyGame:
                 else:
                     # شهروند
                     if mode_key == "undercover":
-                        # بعضی‌ها کلمه اصلی، بعضی‌ها کلمه‌ی مشابه
                         my_word = game["word_alt"] if random.random() < 0.5 else game["word"]
                         civ_text = (
                             f"{PE('sparkle','✨')}  <b>کلمه‌ی مخفی تو</b>  {PE('sparkle','✨')}\n"
@@ -1017,17 +975,12 @@ class SpyGame:
 
         # نمایش شروع
         mode_line = f"{PE('brain','🧠')} حالت: <b>{mode['label']}</b>\n"
-        forbid_line = ""
-        if game["forbidden"]:
-            fw = "، ".join([f"<code>{h(x)}</code>" for x in game["forbidden"]])
-            forbid_line = f"{PE('cross','🚫')} کلمات ممنوعه: {fw}\n"
         await self._safe_send(group_id,
             f"{PE('party','🎉')}  <b>بازی شـروع شد!</b>  {PE('party','🎉')}\n"
             f"{DIV}\n\n"
             f"{mode_line}"
             f"{PE('gem','💎')} کلمه‌ها به پیوی فرستاده شد\n"
-            f"{PE('crown','👑')} <b>{len(spy_uids)} نفر جاسوسن!</b>\n"
-            f"{forbid_line}\n"
+            f"{PE('crown','👑')} <b>{len(spy_uids)} نفر جاسوسن!</b>\n\n"
             f"{PE('info','ℹ️')} به ترتیب، هر کس یه جمله/کلمه در مورد کلمه بگه\n"
             f"{PE('alert','⚠️')} <b>مستقیم نگو کلمه چیه!</b>",
             parse_mode="html")
@@ -1098,10 +1051,6 @@ class SpyGame:
 
         # زمان
         timeout = SPY_SPEED_TURN_TIMEOUT if game.get("mode") == "speed" else SPY_TURN_TIMEOUT
-        forbid_txt = ""
-        if game.get("forbidden"):
-            forbid_txt = (f"\n{PE('cross','🚫')} ممنوع: "
-                          + "، ".join([f"<code>{h(x)}</code>" for x in game["forbidden"]]))
 
         base_text = (
             f"{PE('target','🎯')}  <b>نوبت {h(p['name'])}</b>\n"
@@ -1110,15 +1059,13 @@ class SpyGame:
             f"نفر <code>{pos}/{len(alive_uids)}</code>\n\n"
             f"{PE('message','💬')} <b>{h(p['name'])}</b> یه کلمه یا جمله در مورد "
             f"کلمه‌ی مخفی بگو\n"
-            f"{PE('alert','⚠️')} <i>مستقیم نگو کلمه چیه!</i>"
-            f"{forbid_txt}\n\n"
+            f"{PE('alert','⚠️')} <i>مستقیم نگو کلمه چیه!</i>\n\n"
             f"{PE('list','📋')} <b>وضعیت:</b>\n{status_txt}\n\n"
             f"{PE('hourglass','⏳')} فرصت: <code>{timeout}</code> ثانیه"
         )
         sent = await self._safe_send(group_id, base_text, parse_mode="html")
         if sent:
             game["turn_msg_id"] = sent.id
-            # استارت countdown
             game["countdown_task"] = asyncio.create_task(
                 self._live_countdown(group_id, sent.id, base_text, timeout,
                     lambda: (SPY_ACTIVE_GAMES.get(group_id) is game
@@ -1158,37 +1105,6 @@ class SpyGame:
         if uid != game.get("current_speaker"): return
         p = game["players"].get(uid)
         if not p: return
-
-        # چک کلمات ممنوعه
-        if game.get("forbidden"):
-            low = normalize_fa(raw.lower())
-            for fw in game["forbidden"]:
-                if normalize_fa(fw).lower() in low:
-                    await self._safe_send(event.chat_id,
-                        f"{PE('warning','🚫')} <b>{h(p['name'])}</b>، "
-                        f"کلمه‌ی «<code>{h(fw)}</code>» ممنوعه بود!\n"
-                        f"{PE('skip','⏭')} این نوبت سوخت.",
-                        parse_mode="html")
-                    game["msg_history"].append({
-                        "uid": uid, "name": p["name"], "msg": "(کلمه ممنوعه)"
-                    })
-                    if game.get("turn_task"):
-                        try: game["turn_task"].cancel()
-                        except Exception: pass
-                        game["turn_task"] = None
-                    if game.get("countdown_task"):
-                        try: game["countdown_task"].cancel()
-                        except Exception: pass
-                        game["countdown_task"] = None
-                    if game.get("turn_msg_id"):
-                        try: await self.client.delete_messages(game["group_id"], game["turn_msg_id"])
-                        except Exception: pass
-                        game["turn_msg_id"] = None
-                    game["current_speaker"] = None
-                    game["current_index"] += 1
-                    await asyncio.sleep(1)
-                    await self._next_turn(game["group_id"])
-                    return
 
         if game.get("turn_task"):
             try: game["turn_task"].cancel()
@@ -1595,7 +1511,6 @@ class SpyGame:
         # لیست تحلیل‌ها
         analyses_map = {a.get("idx"): a for a in analysis.get("analyses", [])}
         lines = []
-        new_ach_notifs = []
         for i, m in enumerate(unique, 1):
             a = analyses_map.get(i, {})
             score = int(a.get("score", 0))
@@ -1797,21 +1712,16 @@ class SpyGame:
                 try: group_id = int(parts[2])
                 except Exception:
                     await self._safe_answer(event, "خطا", alert=True); return
-                # فقط بازیکن قبلی یا ادمین
                 if uid not in self._get_admins():
                     await self._safe_answer(event, "⛔ فقط ادمین!", alert=True); return
-                # بازی جدید با همون بازیکنای قبلی
                 if group_id in SPY_ACTIVE_GAMES:
                     await self._safe_answer(event, "بازی در جریانه", alert=True); return
                 await self._safe_answer(event, "🔄 بازی جدید ساخته شد!")
-                # پیام قبلی رو غیرفعال کن
                 try:
                     await event.edit(
                         f"{PE('rocket','🚀')} <b>بازی جدید در راهه...</b>",
                         parse_mode="html", buttons=None)
                 except Exception: pass
-                # شروع رجیستر جدید — بازیکنای قبلی رو نمی‌تونیم بیاریم چون
-                # توی game قبلی بودن و پاک شدن. فقط یه لابی جدید باز می‌کنیم.
                 await self._start_registration(group_id, uid)
                 return
 
@@ -1839,12 +1749,6 @@ class SpyGame:
 
 
 # ═══════════════════════════════════════════════════════════
-# helper برای undercover (به خاطر اینکه داخل متد صدا زده می‌شه)
-async def ai_pick_undercover_pair_safe(game_self):
-    return await game_self.ai_pick_undercover_pair()
-
-
-# ═══════════════════════════════════════════════════════════
 _game = None
 
 
@@ -1854,5 +1758,5 @@ def init_spy(client, db, groq_key, ai_models):
     _game = SpyGame(client, db, groq_key, ai_models)
     _game.setup()
     _game.register_handlers()
-    logger.info("🕵️ Spy module v2.0 initialized!")
+    logger.info("🕵️ Spy module v2.1 initialized!")
     return _game
