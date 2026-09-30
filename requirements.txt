@@ -4,3 +4,4 @@ pysocks
 requests
 psycopg2-binary
 aiohttp
+flask
