@@ -4,6 +4,7 @@
 + 🕵️ RIDDLE DETECTIVE (Simple)
 + 🧠 QUIZ (Medium Difficulty)
 + 🐛 All bug fixes applied
++ 🦄 Unicorn pet game integrated
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
@@ -14,6 +15,11 @@ from aiohttp import web
 from dotenv import load_dotenv
 from telethon import TelegramClient, events, Button
 from telethon.errors import MessageNotModifiedError, FloodWaitError
+
+# ═══════════════════════════════════════════════════════════
+# 🦄 UNICORN GAME MODULE (اضافه شده)
+# ═══════════════════════════════════════════════════════════
+from unicorn import init_unicorn
 
 load_dotenv()
 
@@ -3272,6 +3278,12 @@ async def main():
     me = await client.get_me()
     BOT_USERNAME = me.username
     logger.info(f"✅ Bot: @{BOT_USERNAME} (ID: {me.id})")
+
+    # ═══════════════════════════════════════════════════════════
+    # 🦄 UNICORN GAME INIT (اضافه شده)
+    # ═══════════════════════════════════════════════════════════
+    init_unicorn(client, db)
+
     try:
         await safe_send(OWNER_ID,
                         f"{E('check','✅')} <b>ربات روشن شد</b>\n{DIV}\n\n"
@@ -3281,6 +3293,7 @@ async def main():
                         f"{E('crown','👑')} ادمین‌ها: <code>{len(ALL_ADMINS)}</code>\n"
                         f"{E('detective','🕵️')} معما: <b>فعال</b>\n"
                         f"{E('brain','🧠')} کوییز: <b>سطح متوسط</b>\n"
+                        f"🦄 یونیکورن: <b>فعال</b>\n"
                         f"{E('time','⏱')} {now_str()}",
                         parse_mode="html")
     except Exception as e: logger.warning(f"notify owner: {e}")
