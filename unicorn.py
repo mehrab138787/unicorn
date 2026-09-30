@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-🦄 UNICORN PET GAME — Royal Edition v4
+🦄 UNICORN PET GAME — Royal Edition v5
 ✨ Refactored: cute premium emojis, bulletproof DB, no callback conflicts
 🎯 Features: neigh / feed / withdraw / daily / spin / skins / achievements / home / stats / transfer / battle / marry / breed
-🔒 Safe answers, auto-reconnect, Persian normalization
+🔒 Safe answers, auto-reconnect, Persian normalization, force_new profile
 """
 
 import re, random, asyncio, logging, time, json
@@ -157,7 +157,6 @@ _TG_EMOJI_RE = re.compile(r'<tg-emoji emoji-id="\d+">([^<]*)</tg-emoji>')
 
 
 def PE(k, fb):
-    """Premium emoji wrapper با fallback"""
     eid = PREM.get(k)
     if not eid:
         return fb
@@ -165,7 +164,6 @@ def PE(k, fb):
 
 
 def strip_premium(text):
-    """حذف tg-emoji tags"""
     return _TG_EMOJI_RE.sub(r"\1", text)
 
 
@@ -176,25 +174,16 @@ def _emoji_err(ex):
 
 
 # ═══════════════════════════════════════════════════════════
-# 🔤 PERSIAN NORMALIZATION (فارسی/عربی یکسان‌سازی)
+# 🔤 PERSIAN NORMALIZATION
 # ═══════════════════════════════════════════════════════════
 def normalize_fa(text):
-    """همه‌ی حروف عربی/فارسی رو یکسان می‌کنه"""
     if not text:
         return text
     return (text
-        .replace("ي", "ی")
-        .replace("ك", "ک")
-        .replace("ة", "ه")
-        .replace("ۀ", "ه")
-        .replace("ؤ", "و")
-        .replace("إ", "ا")
-        .replace("أ", "ا")
-        .replace("آ", "ا")
+        .replace("ي", "ی").replace("ك", "ک").replace("ة", "ه").replace("ۀ", "ه")
+        .replace("ؤ", "و").replace("إ", "ا").replace("أ", "ا").replace("آ", "ا")
         .replace("ئ", "ی")
-        .replace("\u200c", "")
-        .replace("\u200f", "")
-        .replace("\u200e", "")
+        .replace("\u200c", "").replace("\u200f", "").replace("\u200e", "")
         .replace("\u064b", "").replace("\u064c", "").replace("\u064d", "")
         .replace("\u064e", "").replace("\u064f", "").replace("\u0650", "")
         .replace("\u0651", "").replace("\u0652", "").replace("\u0670", "")
@@ -568,7 +557,6 @@ class UnicornGame:
             if not raw:
                 return
             uid = event.sender_id
-            # 🔤 نرمال‌سازی فارسی/عربی
             low = normalize_fa(raw.lower().strip())
             norm_raw = normalize_fa(raw)
 
@@ -640,14 +628,14 @@ class UnicornGame:
                     await self._show_full_stats(event.chat_id, target, reply_to=event.id)
                     return
 
-            # پروفایل
+            # ✅ پروفایل — با force_new=True تا هر بار پیام جدید بفرسته
             if low in ("یونیکورن", "تک شاخ", "یونیکورنم", "شونیکورن", "unicorn", "پروفایل"):
-                await self._show_profile(uid, event.chat_id, reply_to=event.id)
+                await self._show_profile(uid, event.chat_id, reply_to=event.id, force_new=True)
                 return
         except Exception as e:
             logger.exception(f"uni msg: {e}")
 
-    # ═══════════════ PROFILE (مقاوم با ۳ لایه fallback) ═══════════════
+    # ═══════════════ PROFILE ═══════════════
     async def _show_profile(self, uid, chat_id, reply_to=None, flash=None, force_new=False):
         u = self.get_unicorn(uid)
         if not u:
@@ -678,13 +666,13 @@ class UnicornGame:
         msg_id = u.get("last_profile_msg") or 0
         stored_chat = u.get("last_profile_chat") or 0
 
-        # ادیت پیام قبلی
+        # اگه force_new نباشه، پیام قبلی رو ادیت کن
         if not force_new and msg_id and stored_chat == chat_id:
             ok = await self._safe_edit_msg(chat_id, msg_id, text, buttons=btns)
             if ok:
                 return
 
-        # ✅ سه لایه fallback
+        # سه لایه fallback
         attempts = [
             ("with buttons", {"parse_mode": "html", "buttons": btns, "reply_to": reply_to}),
             ("no buttons",   {"parse_mode": "html", "reply_to": reply_to}),
@@ -723,7 +711,6 @@ class UnicornGame:
         skin_emoji, skin_name, _ = SKINS.get(skin_key, SKINS["classic"])
         face = hunger_face(hunger, angry)
 
-        # وضعیت
         if angry:
             status = f"{PE('cross','❌')} قهره — غذا بده"
         elif hunger < 30:
@@ -731,17 +718,14 @@ class UnicornGame:
         else:
             status = f"{PE('check','✅')} سرحال"
 
-        # بونوس
         boost_line = ""
         if boost_mult and boost_mult > 1.0:
             rem = max(0, (u.get("boost_until", 0) or 0) - now_ts())
             boost_line = f"  ·  {PE('bolt','⚡')}x{boost_mult:g} ({fmt_time(rem)})"
 
-        # همسر
         marry = u.get("married_to") or 0
         marry_line = f"  ·  {PE('heart','💖')} متأهل" if marry else ""
 
-        # لول بعدی
         if level < 10:
             nxt = level + 1
             n_neigh_need = LEVEL_THRESHOLDS[nxt - 1]
@@ -808,7 +792,7 @@ class UnicornGame:
                 rem = NEIGH_COOLDOWN_SEC - (ts - last)
                 await self._safe_send(event.chat_id,
                     f"{PE('hourglass','⏰')} <b>{p_name} تازه نیه کشید!</b>\n"
-                    f"تا <code>{fmt_time(rem)}</code> دیگه صبر کن {PE('wave','💤')}",
+                    f"تا <code>{fmt_time(rem)}</code> دیگه صبر کن 💤",
                     parse_mode="html", reply_to=event.id)
                 return
 
