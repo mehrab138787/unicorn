@@ -5,6 +5,7 @@
 + 🧠 QUIZ (Medium Difficulty)
 + 🐛 All bug fixes applied
 + 🦄 Unicorn pet game integrated
++ 🔧 v3: DB reconnect + callback isolation fix
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
@@ -156,7 +157,6 @@ async def _stop_task_safe(task, settle=0.35):
         try: task.cancel()
         except Exception: pass
         try:
-            # ✅ از asyncio.wait استفاده می‌کنیم نه wait_for — چون wait_for خودش cancel می‌کنه
             await asyncio.wait([task], timeout=2.0)
         except Exception:
             pass
@@ -983,12 +983,32 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
 
 class DB:
     def __init__(self, dsn):
+        self.dsn = dsn                                       # ← FIX: برای reconnect
         self.conn = psycopg2.connect(dsn)
         self.conn.autocommit = True
         self._create(); self._migrate()
         logger.info("✅ PostgreSQL connected")
 
-    def _c(self): return self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    def reconnect(self):                                     # ← FIX: متد reconnect
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+        self.conn = psycopg2.connect(self.dsn)
+        self.conn.autocommit = True
+        logger.info("🔄 DB reconnected")
+
+    def _c(self):
+        # ← FIX: چک کردن اتصال بسته و reconnect خودکار
+        try:
+            if self.conn.closed:
+                self.reconnect()
+        except Exception:
+            try:
+                self.reconnect()
+            except Exception:
+                pass
+        return self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     def _create(self):
         c = self._c()
@@ -1547,7 +1567,6 @@ async def quiz_answer(g, uid, ai):
     cq = g.get("current_question")
     if not cq or cq.get("answered") or cq["player"] != uid: return
     cq["answered"] = True
-    # ✅ fix: انتظار کامل برای توقف تایمر
     await _stop_task_safe(g.get("timeout_task"), settle=0.4)
     g["timeout_task"] = None
     p = g["players"][uid]; correct = cq["correct"]; ok = (ai == correct)
@@ -1870,7 +1889,6 @@ async def td_next_turn(g):
             f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
     sent = await safe_send(g["group_id"], text, buttons=rows, parse_mode="html")
     if sent: g["turn_msg_id"] = sent.id
-    # ✅ fix: خودت رو cancel نکن
     cur_task = asyncio.current_task()
     old_task = g.get("timeout_task")
     if old_task and old_task is not cur_task and not old_task.done():
@@ -2649,6 +2667,12 @@ async def on_cb(event):
     try:
         uid = event.sender_id
         data = event.data.decode("utf-8", "ignore")
+
+        # ═══════════════════════════════════════════════════════════
+        # 🐛 FIX: callbackهای unicorn رو نادیده بگیر — خودش مدیریت می‌کنه
+        # ═══════════════════════════════════════════════════════════
+        if data.startswith("uni:"):
+            return
 
         if data == "rd_setup":
             g = RIDDLE_SETUP_GAMES.get(uid)
