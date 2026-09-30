@@ -6,6 +6,7 @@
 + 🐛 All bug fixes applied
 + 🦄 Unicorn pet game integrated
 + 🔧 v3: DB reconnect + callback isolation fix
++ 🕵️ Spy game integrated
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
@@ -18,9 +19,14 @@ from telethon import TelegramClient, events, Button
 from telethon.errors import MessageNotModifiedError, FloodWaitError
 
 # ═══════════════════════════════════════════════════════════
-# 🦄 UNICORN GAME MODULE (اضافه شده)
+# 🦄 UNICORN GAME MODULE
 # ═══════════════════════════════════════════════════════════
 from unicorn import init_unicorn
+
+# ═══════════════════════════════════════════════════════════
+# 🕵️ SPY GAME MODULE
+# ═══════════════════════════════════════════════════════════
+from spy import init_spy
 
 load_dotenv()
 
@@ -149,10 +155,9 @@ async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=3):
 
 
 # ═══════════════════════════════════════════════════════════
-# 🐛 FIX v2: توقف امن تسک — بدون propagate کردن CancelledError
+# 🐛 FIX v2: توقف امن تسک
 # ═══════════════════════════════════════════════════════════
 async def _stop_task_safe(task, settle=0.35):
-    """تسک رو کنسل می‌کنه و منتظر پایان کاملش می‌مونه — بدون race condition"""
     if task and not task.done():
         try: task.cancel()
         except Exception: pass
@@ -983,13 +988,13 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
 
 class DB:
     def __init__(self, dsn):
-        self.dsn = dsn                                       # ← FIX: برای reconnect
+        self.dsn = dsn
         self.conn = psycopg2.connect(dsn)
         self.conn.autocommit = True
         self._create(); self._migrate()
         logger.info("✅ PostgreSQL connected")
 
-    def reconnect(self):                                     # ← FIX: متد reconnect
+    def reconnect(self):
         try:
             self.conn.close()
         except Exception:
@@ -999,7 +1004,6 @@ class DB:
         logger.info("🔄 DB reconnected")
 
     def _c(self):
-        # ← FIX: چک کردن اتصال بسته و reconnect خودکار
         try:
             if self.conn.closed:
                 self.reconnect()
@@ -1188,6 +1192,7 @@ async def send_admin_menu(event, edit=False):
             f"  {E('diamond','💎')} <code>چالش</code> {E('point','←')} کوییز هوشمند\n"
             f"  {E('magic','🎭')} <code>جرعت</code> {E('point','←')} جرعت یا حقیقت\n"
             f"  {E('detective','🕵️')} <code>معما</code> {E('point','←')} معمای کارآگاهی\n"
+            f"  {E('detective','🕵️')} <code>جاسوس</code> {E('point','←')} بازی جاسوس\n"
             f"  {E('chart','📊')} <code>نظرسنجی: عنوان | گ1 | گ2</code>\n\n"
             f"{DIV2}\n{E('star','⭐')} <i>از دکمه‌ها استفاده کن</i> {E('point','👇')}")
     buttons = [
@@ -1439,9 +1444,6 @@ def quiz_category_buttons(g):
     return btns
 
 
-# ═══════════════════════════════════════════════════════════
-# 🐛 FIX: quiz_ask_question — انتظار کامل برای تایمر قدیمی
-# ═══════════════════════════════════════════════════════════
 async def quiz_ask_question(g, uid, ci):
     k, e, cn = QUIZ_CATEGORIES[ci]; gid = g["group_id"]
     if g.get("turn_msg_id"):
@@ -1848,9 +1850,6 @@ async def td_start_game(g):
     await asyncio.sleep(2); await td_next_turn(g)
 
 
-# ═══════════════════════════════════════════════════════════
-# 🐛 FIX: td_next_turn — جلوگیری از self-cancel
-# ═══════════════════════════════════════════════════════════
 async def td_next_turn(g):
     if g["state"] != "playing": return
     if not g["order"]: await td_finish(g); return
@@ -2463,7 +2462,7 @@ async def on_private(event):
                                    f"{E('crown','👑')} <b>UNICORN ANONY BOT</b>\n{DIV}\n\n"
                                    f"{E('wave','👋')} سلام!\n\n"
                                    f"{E('brain','🧠')} کوییز هوشمند + {E('magic','🎭')} جرعت حقیقت\n"
-                                   f"{E('detective','🕵️')} بازی معما\n"
+                                   f"{E('detective','🕵️')} بازی معما و جاسوس\n"
                                    f"{E('diamond','💎')} چالش ناشناس\n"
                                    f"{E('heart','💌')} پیام ناشناس\n\n"
                                    f"{E('info','ℹ️')} /help", parse_mode="html")
@@ -2669,9 +2668,11 @@ async def on_cb(event):
         data = event.data.decode("utf-8", "ignore")
 
         # ═══════════════════════════════════════════════════════════
-        # 🐛 FIX: callbackهای unicorn رو نادیده بگیر — خودش مدیریت می‌کنه
+        # 🐛 FIX: callbackهای unicorn و spy رو نادیده بگیر
         # ═══════════════════════════════════════════════════════════
         if data.startswith("uni:"):
+            return
+        if data.startswith("spy:"):
             return
 
         if data == "rd_setup":
@@ -3304,9 +3305,14 @@ async def main():
     logger.info(f"✅ Bot: @{BOT_USERNAME} (ID: {me.id})")
 
     # ═══════════════════════════════════════════════════════════
-    # 🦄 UNICORN GAME INIT (اضافه شده)
+    # 🦄 UNICORN GAME INIT
     # ═══════════════════════════════════════════════════════════
     init_unicorn(client, db)
+
+    # ═══════════════════════════════════════════════════════════
+    # 🕵️ SPY GAME INIT
+    # ═══════════════════════════════════════════════════════════
+    init_spy(client, db, GROQ_API_KEY, AI_MODELS)
 
     try:
         await safe_send(OWNER_ID,
@@ -3317,6 +3323,7 @@ async def main():
                         f"{E('crown','👑')} ادمین‌ها: <code>{len(ALL_ADMINS)}</code>\n"
                         f"{E('detective','🕵️')} معما: <b>فعال</b>\n"
                         f"{E('brain','🧠')} کوییز: <b>سطح متوسط</b>\n"
+                        f"{E('detective','🕵️')} جاسوس: <b>فعال</b>\n"
                         f"🦄 یونیکورن: <b>فعال</b>\n"
                         f"{E('time','⏱')} {now_str()}",
                         parse_mode="html")
