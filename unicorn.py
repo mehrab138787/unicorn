@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-🦄 UNICORN PET GAME — Royal Edition v3
-✨ Refactored: clean, short messages, bulletproof DB, no callback conflicts
-🎯 All features: feed / withdraw / daily / spin / skins / achievements / home / stats
-🔒 Safe answers, auto-reconnect, short neigh messages
+🦄 UNICORN PET GAME — Royal Edition v4
+✨ Refactored: cute premium emojis, bulletproof DB, no callback conflicts
+🎯 Features: neigh / feed / withdraw / daily / spin / skins / achievements / home / stats / transfer / battle / marry / breed
+🔒 Safe answers, auto-reconnect, Persian normalization
 """
 
 import re, random, asyncio, logging, time, json
@@ -93,7 +93,7 @@ DIV = "━━━━━━━━━━━━━━━━━━━━━━━━�
 DIV2 = "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
 
 # ═══════════════════════════════════════════════════════════
-# 🎨 PREMIUM EMOJI
+# 🎨 PREMIUM EMOJI IDS
 # ═══════════════════════════════════════════════════════════
 PREM = {
     "sparkle": "5404654051945521778",
@@ -126,12 +126,38 @@ PREM = {
     "lock": "5397782960512444700",
     "eye": "5397782960512444700",
     "detective": "5424972470023104089",
+    "joy": "5780769611324455942",
+    "laugh": "5368324170671202286",
+    "magic": "5404654051945521778",
+    "gamepad": "5424972470023104089",
+    "hourglass": "5458603043203327669",
+    "shield": "5397782960512444700",
+    "skip": "5424972470023104089",
+    "message": "5443038326535759644",
+    "link": "5271604874419647061",
+    "search": "5271604874419647061",
+    "vote": "5206607081334906820",
+    "clue": "5271604874419647061",
+    "knife": "5447644880824181073",
+    "book": "5447410659077661506",
+    "ball": "5424972470023104089",
+    "globe": "5271604874419647061",
+    "movie": "5443038326535759644",
+    "music": "5456359790390093750",
+    "laptop": "5404654051945521778",
+    "pin": "5397782960512444700",
+    "group": "5447410659077661506",
+    "list": "5447410659077661506",
+    "export": "5447410659077661506",
+    "stats": "5231200819986047254",
+    "share": "5271604874419647061",
 }
 
 _TG_EMOJI_RE = re.compile(r'<tg-emoji emoji-id="\d+">([^<]*)</tg-emoji>')
 
 
 def PE(k, fb):
+    """Premium emoji wrapper با fallback"""
     eid = PREM.get(k)
     if not eid:
         return fb
@@ -139,6 +165,7 @@ def PE(k, fb):
 
 
 def strip_premium(text):
+    """حذف tg-emoji tags"""
     return _TG_EMOJI_RE.sub(r"\1", text)
 
 
@@ -148,6 +175,35 @@ def _emoji_err(ex):
            ("custom emoji" in s) or ("emoji" in s and "invalid" in s)
 
 
+# ═══════════════════════════════════════════════════════════
+# 🔤 PERSIAN NORMALIZATION (فارسی/عربی یکسان‌سازی)
+# ═══════════════════════════════════════════════════════════
+def normalize_fa(text):
+    """همه‌ی حروف عربی/فارسی رو یکسان می‌کنه"""
+    if not text:
+        return text
+    return (text
+        .replace("ي", "ی")
+        .replace("ك", "ک")
+        .replace("ة", "ه")
+        .replace("ۀ", "ه")
+        .replace("ؤ", "و")
+        .replace("إ", "ا")
+        .replace("أ", "ا")
+        .replace("آ", "ا")
+        .replace("ئ", "ی")
+        .replace("\u200c", "")
+        .replace("\u200f", "")
+        .replace("\u200e", "")
+        .replace("\u064b", "").replace("\u064c", "").replace("\u064d", "")
+        .replace("\u064e", "").replace("\u064f", "").replace("\u0650", "")
+        .replace("\u0651", "").replace("\u0652", "").replace("\u0670", "")
+    )
+
+
+# ═══════════════════════════════════════════════════════════
+# 🛠 HELPERS
+# ═══════════════════════════════════════════════════════════
 def fmt_num(n):
     try:
         n = int(n)
@@ -211,9 +267,9 @@ def hunger_face(hunger, angry):
     return "😍"
 
 
-def hunger_bar(h):
-    h = max(0, min(100, int(h)))
-    return "🍰" * (h // 10) + "🖤" * (10 - h // 10)
+def hunger_bar(hv):
+    hv = max(0, min(100, int(hv)))
+    return "🍰" * (hv // 10) + "🖤" * (10 - hv // 10)
 
 
 def progress_bar(cur, total, width=10):
@@ -245,25 +301,24 @@ class UnicornGame:
         self.conn = db.conn
         self._running = False
 
-    # ═══════════════ DB CURSOR (با reconnect خودکار) ═══════════════
+    # ═══════════════ DB CURSOR ═══════════════
     def _c(self):
-        """Cursor با reconnect خودکار — هرگز stale نمی‌شه"""
         import psycopg2, psycopg2.extras
         try:
             if self.conn is None or self.conn.closed:
                 raise psycopg2.InterfaceError("connection closed")
             return self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        except (psycopg2.InterfaceError, psycopg2.OperationalError, AttributeError):
-            logger.warning("🔄 Unicorn DB reconnect...")
+        except (psycopg2.InterfaceError, psycopg2.OperationalError, AttributeError) as e:
+            logger.warning(f"🔄 Unicorn DB reconnect — reason: {e}")
             try:
                 self.db.reconnect()
                 self.conn = self.db.conn
-            except Exception as e:
-                logger.error(f"❌ Reconnect failed: {e}")
+            except Exception as e2:
+                logger.error(f"❌ Reconnect failed: {e2}")
+                raise
             return self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     def _ensure_alive(self):
-        """Health check سریع برای دیتابیس"""
         try:
             c = self._c()
             c.execute("SELECT 1")
@@ -318,7 +373,6 @@ class UnicornGame:
             return False
 
     async def _safe_answer(self, event, text=None, alert=False):
-        """پاسخ امن به callback — هرگز exception نمی‌ده"""
         try:
             await event.answer(text, alert=alert)
         except Exception:
@@ -453,12 +507,11 @@ class UnicornGame:
         try_unlock("daily_30", (u.get("daily_streak") or 0) >= 30)
         return new_ones
 
-    # ═══════════════ TICKER (با health check) ═══════════════
+    # ═══════════════ TICKER ═══════════════
     async def _ticker(self):
         await asyncio.sleep(8)
         while self._running:
             try:
-                # 🩺 health check هر چرخه
                 self._ensure_alive()
                 self._tick_all()
             except Exception as e:
@@ -515,7 +568,9 @@ class UnicornGame:
             if not raw:
                 return
             uid = event.sender_id
-            low = raw.lower().strip()
+            # 🔤 نرمال‌سازی فارسی/عربی
+            low = normalize_fa(raw.lower().strip())
+            norm_raw = normalize_fa(raw)
 
             try:
                 s = await event.get_sender()
@@ -525,8 +580,8 @@ class UnicornGame:
             self.get_or_create(uid, name)
 
             # انتقال
-            if event.reply_to_msg_id and "انتقال" in raw and "یونیکورن" in raw:
-                await self._handle_transfer(event, uid, raw)
+            if event.reply_to_msg_id and "انتقال" in norm_raw and "یونیکورن" in norm_raw:
+                await self._handle_transfer(event, uid, norm_raw)
                 return
 
             # دوئل
@@ -545,7 +600,7 @@ class UnicornGame:
                 return
 
             # نیه
-            if low in ("نیه", "نيه", "نیییه", "نههه", "neigh"):
+            if low in ("نیه", "نیییه", "نههه", "neigh"):
                 await self._handle_neigh(event, uid)
                 return
 
@@ -571,14 +626,13 @@ class UnicornGame:
 
             # آمار کامل
             if low in ("یونیکورن هام", "یونیکورنهام", "یونیکورن های من",
-                       "یونیکورن‌هام", "امار یونیکورن", "آمار یونیکورن",
-                       "یونیکورن هام کامل"):
+                       "امار یونیکورن", "آمار یونیکورن", "یونیکورن هام کامل"):
                 await self._show_full_stats(event.chat_id, uid, reply_to=event.id)
                 return
 
             # آمار شخص دیگه
-            if (event.reply_to_msg_id and low in ("یونیکورن هاش", "یونیکورن‌هاش",
-                                                  "یونیکورن های اون", "یونیکورن هاش کامل")):
+            if (event.reply_to_msg_id and low in ("یونیکورن هاش", "یونیکورن های اون",
+                                                  "یونیکورن هاش کامل")):
                 rm = await event.get_reply_message()
                 target = rm.sender_id if rm else None
                 if target:
@@ -587,44 +641,73 @@ class UnicornGame:
                     return
 
             # پروفایل
-            if low in ("یونیکورن", "تک شاخ", "تک‌شاخ", "یونیکورنم",
-                       "شونیکورن", "unicorn", "پروفایل"):
+            if low in ("یونیکورن", "تک شاخ", "یونیکورنم", "شونیکورن", "unicorn", "پروفایل"):
                 await self._show_profile(uid, event.chat_id, reply_to=event.id)
                 return
         except Exception as e:
             logger.exception(f"uni msg: {e}")
 
-    # ═══════════════ PROFILE ═══════════════
+    # ═══════════════ PROFILE (مقاوم با ۳ لایه fallback) ═══════════════
     async def _show_profile(self, uid, chat_id, reply_to=None, flash=None, force_new=False):
         u = self.get_unicorn(uid)
         if not u:
+            logger.warning(f"🦄 _show_profile: user {uid} not found in DB")
+            try:
+                await self._safe_send(chat_id,
+                    f"{PE('cross','❌')} <b>یونیکورنت پیدا نشد!</b>\n"
+                    f"اول یه بار <code>نیه</code> بزن تا ساخته بشه.",
+                    parse_mode="html", reply_to=reply_to)
+            except Exception:
+                pass
             return
+
         try:
             self._tick_one(u, now_ts())
             u = self.get_unicorn(uid) or u
         except Exception:
             pass
 
-        text = self._render_profile(u, flash=flash)
+        try:
+            text = self._render_profile(u, flash=flash)
+        except Exception as e:
+            logger.exception(f"🦄 render profile failed: {e}")
+            text = f"{PE('cross','❌')} خطا در ساخت پروفایل"
+
         btns = self._profile_buttons(uid)
 
         msg_id = u.get("last_profile_msg") or 0
         stored_chat = u.get("last_profile_chat") or 0
 
+        # ادیت پیام قبلی
         if not force_new and msg_id and stored_chat == chat_id:
             ok = await self._safe_edit_msg(chat_id, msg_id, text, buttons=btns)
             if ok:
                 return
 
-        kwargs = {"parse_mode": "html", "buttons": btns}
-        if reply_to:
-            kwargs["reply_to"] = reply_to
-        try:
-            sent = await self._safe_send(chat_id, text, **kwargs)
-            if sent:
-                self.update(uid, last_profile_msg=sent.id, last_profile_chat=chat_id)
-        except Exception as e:
-            logger.error(f"🦄 profile send failed: {e}")
+        # ✅ سه لایه fallback
+        attempts = [
+            ("with buttons", {"parse_mode": "html", "buttons": btns, "reply_to": reply_to}),
+            ("no buttons",   {"parse_mode": "html", "reply_to": reply_to}),
+            ("plain text",   {"parse_mode": "html", "reply_to": reply_to}),
+        ]
+        for label, kwargs in attempts:
+            try:
+                send_text = strip_premium(text) if label == "plain text" else text
+                kw = {k: v for k, v in kwargs.items() if v is not None}
+                sent = await self.client.send_message(chat_id, send_text, **kw)
+                if sent:
+                    self.update(uid, last_profile_msg=sent.id, last_profile_chat=chat_id)
+                    logger.info(f"🦄 profile sent OK ({label}) to {chat_id}")
+                    return
+            except Exception as e:
+                logger.warning(f"🦄 profile attempt '{label}' failed: "
+                               f"{type(e).__name__}: {str(e)[:120]}")
+                if "reply" in str(e).lower():
+                    reply_to = None
+                await asyncio.sleep(0.3)
+                continue
+
+        logger.error(f"🦄 profile send COMPLETELY FAILED for uid={uid} chat={chat_id}")
 
     def _render_profile(self, u, flash=None):
         level = max(1, min(10, u.get("level") or 1))
@@ -652,11 +735,11 @@ class UnicornGame:
         boost_line = ""
         if boost_mult and boost_mult > 1.0:
             rem = max(0, (u.get("boost_until", 0) or 0) - now_ts())
-            boost_line = f"  ·  ⚡x{boost_mult:g} ({fmt_time(rem)})"
+            boost_line = f"  ·  {PE('bolt','⚡')}x{boost_mult:g} ({fmt_time(rem)})"
 
         # همسر
         marry = u.get("married_to") or 0
-        marry_line = "  ·  💖 متأهل" if marry else ""
+        marry_line = f"  ·  {PE('heart','💖')} متأهل" if marry else ""
 
         # لول بعدی
         if level < 10:
@@ -667,8 +750,8 @@ class UnicornGame:
             p_bar = progress_bar(points, n_pts_need)
             lvl_block = (
                 f"{PE('star','⭐')} <b>مسیر لول {nxt}</b>\n"
-                f"   👋 {n_bar} <code>{neigh}/{n_neigh_need}</code>\n"
-                f"   💎 {p_bar} <code>{fmt_num(points)}/{fmt_num(n_pts_need)}</code>"
+                f"   {PE('wave','👋')} {n_bar} <code>{neigh}/{n_neigh_need}</code>\n"
+                f"   {PE('gem','💎')} {p_bar} <code>{fmt_num(points)}/{fmt_num(n_pts_need)}</code>"
             )
         else:
             lvl_block = f"{PE('crown','👑')} <b>آخرین لول!</b>"
@@ -677,7 +760,7 @@ class UnicornGame:
 
         return (
             f"{flash_block}"
-            f"{PE('sparkle','✨')} <b>پروفایل یونیکورن</b>\n"
+            f"{PE('sparkle','✨')} <b>پروفایل یونیکورن</b> {PE('sparkle','✨')}\n"
             f"{DIV}\n"
             f"{face} <b>{skin_emoji} {h(u.get('name') or '—')}</b>\n"
             f"{PE('crown','👑')} {LEVEL_NAMES[level-1]}  ·  <code>{level}/10</code>\n"
@@ -706,7 +789,7 @@ class UnicornGame:
             [Button.inline("🔄 بروزرسانی", data=f"uni:refresh:{uid}".encode())],
         ]
 
-    # ═══════════════ NEIGH (کوتاه و سریع) ═══════════════
+    # ═══════════════ NEIGH ═══════════════
     async def _handle_neigh(self, event, uid):
         try:
             u = self.get_or_create(uid, "—")
@@ -716,7 +799,7 @@ class UnicornGame:
             if u.get("angry"):
                 await self._safe_send(event.chat_id,
                     f"{PE('cross','❌')} <b>{p_name} قهره!</b>\n"
-                    f"اول غذا بده 💔",
+                    f"اول غذا بده {PE('heart','💔')}",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -724,8 +807,8 @@ class UnicornGame:
             if last and ts - last < NEIGH_COOLDOWN_SEC:
                 rem = NEIGH_COOLDOWN_SEC - (ts - last)
                 await self._safe_send(event.chat_id,
-                    f"⏰ <b>{p_name} تازه نیه کشید!</b>\n"
-                    f"تا <code>{fmt_time(rem)}</code> دیگه صبر کن 💤",
+                    f"{PE('hourglass','⏰')} <b>{p_name} تازه نیه کشید!</b>\n"
+                    f"تا <code>{fmt_time(rem)}</code> دیگه صبر کن {PE('wave','💤')}",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -751,7 +834,7 @@ class UnicornGame:
 
             v = random.choice(["🦄💖", "🌈✨", "💫🌟", "🎀💝", "🌙⭐", "🦄💫", "🌸🦄"])
             lines = [
-                f"{v} <b>{p_name} نیـه زد!</b>",
+                f"{v} {PE('sparkle','✨')} <b>{p_name} نیـه زد!</b> {PE('sparkle','✨')}",
                 f"{PE('gift','🎁')} پاداش: <code>+{fmt_num(reward)}</code>",
                 f"{PE('gem','💎')} مجموع: <code>{fmt_num(new_points)}</code>",
             ]
@@ -812,7 +895,7 @@ class UnicornGame:
                         last_hunger_tick=now_ts())
             v = random.choice(["🍰🍬", "🧁🍭", "🍪🍩", "🎂🌸", "🍯💖"])
             await self._show_profile(uid, chat_id, reply_to=reply_to,
-                flash=f"{v} <b>نوم‌نوم!</b>\nسیری: <code>{new_h}%</code>")
+                flash=f"{v} <b>نوم‌نوم!</b>\nسیری: <code>{new_h}%</code> {PE('heart','💖')}")
         except Exception as e:
             logger.exception(f"feed err: {e}")
 
@@ -834,7 +917,7 @@ class UnicornGame:
                 return
             if u.get("angry"):
                 await self._show_profile(uid, chat_id, reply_to=reply_to,
-                    flash=f"{PE('cross','❌')} قهره! اول غذا بده 💔")
+                    flash=f"{PE('cross','❌')} قهره! اول غذا بده {PE('heart','💔')}")
                 return
             new_pts = (u.get("points") or 0) + pending
             new_tot = (u.get("total_earned") or 0) + pending
@@ -860,7 +943,7 @@ class UnicornGame:
             last = u.get("last_daily") or 0
             if last and ts - last < DAILY_COOLDOWN_SEC:
                 rem = DAILY_COOLDOWN_SEC - (ts - last)
-                msg = f"⏰ <b>پاداش بعدی:</b>\n<code>{fmt_time(rem)}</code> دیگه"
+                msg = f"{PE('hourglass','⏰')} <b>پاداش بعدی:</b>\n<code>{fmt_time(rem)}</code> دیگه"
                 if edit_msg:
                     await self._safe_edit_msg(chat_id, edit_msg, msg,
                         buttons=self._profile_buttons(uid))
@@ -883,8 +966,8 @@ class UnicornGame:
                         points=new_pts, total_earned=new_tot)
             new_ach = self.check_achievements(uid)
 
-            flash = (f"🎁 <b>پاداش روزانه!</b>\n"
-                     f"🔥 استریک: <code>{streak}</code>  ·  "
+            flash = (f"{PE('gift','🎁')} <b>پاداش روزانه!</b>\n"
+                     f"{PE('fire','🔥')} استریک: <code>{streak}</code>  ·  "
                      f"{PE('gem','💎')} <code>+{fmt_num(reward)}</code>")
             if new_ach:
                 names = " · ".join([f"{ACHIEVEMENTS[k][0]} {ACHIEVEMENTS[k][1]}"
@@ -914,7 +997,8 @@ class UnicornGame:
             last = u.get("last_spin") or 0
             if last and ts - last < SPIN_COOLDOWN_SEC:
                 rem = SPIN_COOLDOWN_SEC - (ts - last)
-                msg = f"🎰 <b>گردونه آماده نیست!</b>\n⏰ <code>{fmt_time(rem)}</code> دیگه"
+                msg = (f"🎰 <b>گردونه آماده نیست!</b>\n"
+                       f"{PE('hourglass','⏰')} <code>{fmt_time(rem)}</code> دیگه")
                 if edit_msg:
                     await self._safe_edit_msg(chat_id, edit_msg, msg,
                         buttons=self._profile_buttons(uid))
@@ -933,7 +1017,7 @@ class UnicornGame:
                     break
 
             emoji, label, kind, val, _ = chosen
-            flash = f"🎰 <b>گردونه!</b>\n{emoji} {label}"
+            flash = f"🎰 {PE('party','🎉')} <b>گردونه!</b>\n{emoji} {label}"
 
             upd = {"last_spin": ts, "spin_count": (u.get("spin_count") or 0) + 1}
             if kind == "points":
@@ -983,12 +1067,12 @@ class UnicornGame:
                           raw.replace("انتقال", "").replace("یونیکورن", ""))
             if not m:
                 await self._safe_send(event.chat_id,
-                    "⚠️ فرمت: ریپلای + <code>انتقال یونیکورن 100k</code>",
+                    f"{PE('warning','⚠️')} فرمت: ریپلای + <code>انتقال یونیکورن 100k</code>",
                     parse_mode="html", reply_to=event.id)
                 return
             amount = parse_amount(m.group(1))
             if not amount or amount < 1:
-                await self._safe_send(event.chat_id, "❌ مقدار نامعتبر!",
+                await self._safe_send(event.chat_id, f"{PE('cross','❌')} مقدار نامعتبر!",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -997,14 +1081,14 @@ class UnicornGame:
                 return
             to_uid = rm.sender_id
             if to_uid == uid:
-                await self._safe_send(event.chat_id, "❌ به خودت نمی‌تونی!",
+                await self._safe_send(event.chat_id, f"{PE('cross','❌')} به خودت نمی‌تونی!",
                     parse_mode="html", reply_to=event.id)
                 return
 
             su = self.get_unicorn(uid) or self.get_or_create(uid, "—")
             if (su.get("points") or 0) < amount:
                 await self._safe_send(event.chat_id,
-                    f"❌ پوینت کافی نداری!\n"
+                    f"{PE('cross','❌')} پوینت کافی نداری!\n"
                     f"داری: <code>{fmt_num(su.get('points', 0))}</code>",
                     parse_mode="html", reply_to=event.id)
                 return
@@ -1035,9 +1119,9 @@ class UnicornGame:
             await self._safe_send(event.chat_id,
                 f"{PE('rocket','🚀')} <b>انتقال موفق!</b>\n"
                 f"{DIV}\n"
-                f"👤 <a href=\"tg://user?id={uid}\">{h(fname)}</a>\n"
+                f"{PE('user','👤')} <a href=\"tg://user?id={uid}\">{h(fname)}</a>\n"
                 f"   ⬇️ <code>{fmt_num(amount)}</code>\n"
-                f"🎯 <a href=\"tg://user?id={to_uid}\">{h(to_name)}</a>",
+                f"{PE('target','🎯')} <a href=\"tg://user?id={to_uid}\">{h(to_name)}</a>",
                 parse_mode="html", reply_to=event.id)
         except Exception as e:
             logger.exception(f"transfer: {e}")
@@ -1050,7 +1134,7 @@ class UnicornGame:
                 return
             target = rm.sender_id
             if target == uid:
-                await self._safe_send(event.chat_id, "❌ با خودت نمی‌تونی بجنگی!",
+                await self._safe_send(event.chat_id, f"{PE('cross','❌')} با خودت نمی‌تونی بجنگی!",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -1065,7 +1149,7 @@ class UnicornGame:
 
             if a.get("angry") or b.get("angry"):
                 await self._safe_send(event.chat_id,
-                    "❌ یه یونیکورن قهره! اول غذا بدین.",
+                    f"{PE('cross','❌')} یه یونیکورن قهره! اول غذا بدین.",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -1098,15 +1182,15 @@ class UnicornGame:
             self.check_achievements(loser_uid)
 
             await self._safe_send(event.chat_id,
-                f"🥊 <b>نـبـرد!</b>\n"
+                f"🥊 {PE('fire','🔥')} <b>نـبـرد!</b> {PE('fire','🔥')}\n"
                 f"{DIV}\n"
                 f"🦄 <a href=\"tg://user?id={uid}\">{a_name}</a> vs "
                 f"🦄 <a href=\"tg://user?id={target}\">{b_name}</a>\n"
                 f"⚔️ <code>{a_pow}</code> vs <code>{b_pow}</code>\n"
                 f"{DIV2}\n"
-                f"👑 <b>برنده:</b> <a href=\"tg://user?id={winner_uid}\">"
+                f"{PE('crown','👑')} <b>برنده:</b> <a href=\"tg://user?id={winner_uid}\">"
                 f"{h(winner.get('name') or '—')}</a>\n"
-                f"🎁 <code>+{fmt_num(reward)}</code>",
+                f"{PE('gift','🎁')} <code>+{fmt_num(reward)}</code>",
                 parse_mode="html", reply_to=event.id)
         except Exception as e:
             logger.exception(f"battle: {e}")
@@ -1119,7 +1203,7 @@ class UnicornGame:
                 return
             target = rm.sender_id
             if target == uid:
-                await self._safe_send(event.chat_id, "❌ با خودت نمی‌تونی!",
+                await self._safe_send(event.chat_id, f"{PE('cross','❌')} با خودت نمی‌تونی!",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -1133,11 +1217,11 @@ class UnicornGame:
             b = self.get_unicorn(target)
 
             if a.get("married_to") and a.get("married_to") != 0:
-                await self._safe_send(event.chat_id, "❌ تو الان متأهلی!",
+                await self._safe_send(event.chat_id, f"{PE('cross','❌')} تو الان متأهلی!",
                     parse_mode="html", reply_to=event.id)
                 return
             if b.get("married_to") and b.get("married_to") != 0:
-                await self._safe_send(event.chat_id, "❌ یونیکورن اون متأهله!",
+                await self._safe_send(event.chat_id, f"{PE('cross','❌')} یونیکورن اون متأهله!",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -1147,7 +1231,7 @@ class UnicornGame:
             self.check_achievements(target)
 
             await self._safe_send(event.chat_id,
-                f"💍 <b>ازدواج یـونـیـکـورنـی!</b>\n"
+                f"💍 {PE('party','🎉')} <b>ازدواج یـونـیـکـورنـی!</b> {PE('party','🎉')}\n"
                 f"{DIV}\n\n"
                 f"🌸 <a href=\"tg://user?id={uid}\">{h(a.get('name') or '—')}</a> "
                 f"{PE('heart','💖')} "
@@ -1166,7 +1250,7 @@ class UnicornGame:
             marr = u.get("married_to") or 0
             if not marr:
                 await self._safe_send(event.chat_id,
-                    f"❌ <b>اول ازدواج کن!</b>\n"
+                    f"{PE('cross','❌')} <b>اول ازدواج کن!</b>\n"
                     f"ریپلای کن و بنویس <code>ازدواج</code> 💍",
                     parse_mode="html", reply_to=event.id)
                 return
@@ -1178,7 +1262,8 @@ class UnicornGame:
             if ts - last_breed_at < 6 * 3600:
                 rem = 6 * 3600 - (ts - last_breed_at)
                 await self._safe_send(event.chat_id,
-                    f"🥚 <b>هنوز آماده نیست!</b>\n⏰ <code>{fmt_time(rem)}</code>",
+                    f"🥚 <b>هنوز آماده نیست!</b>\n"
+                    f"{PE('hourglass','⏰')} <code>{fmt_time(rem)}</code>",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -1186,7 +1271,7 @@ class UnicornGame:
             cost = 5000
             if (u.get("points") or 0) < cost:
                 await self._safe_send(event.chat_id,
-                    f"❌ برای پرورش <code>{fmt_num(cost)}</code> لازمه!",
+                    f"{PE('cross','❌')} برای پرورش <code>{fmt_num(cost)}</code> لازمه!",
                     parse_mode="html", reply_to=event.id)
                 return
 
@@ -1198,7 +1283,7 @@ class UnicornGame:
             self.add_achievement(uid, "breeder")
 
             await self._safe_send(event.chat_id,
-                f"👶 <b>تـخـم جـدیـد!</b> 🥚\n"
+                f"👶 {PE('party','🎉')} <b>تـخـم جـدیـد!</b> 🥚\n"
                 f"{DIV}\n\n"
                 f"🥚 تخم‌های تو: <code>{(u.get('eggs') or 0) + 1}</code>\n"
                 f"💕 همسرت هم یه تخم گرفت!",
@@ -1240,7 +1325,7 @@ class UnicornGame:
                          if marry else "<i>مجرد</i>")
 
             text = (
-                f"{PE('chart','📊')} <b>آمـار کـامـل</b>\n"
+                f"{PE('chart','📊')} <b>آمـار کـامـل</b> {PE('chart','📊')}\n"
                 f"{DIV}\n"
                 f"{face} <b>{skin_e} <a href=\"tg://user?id={uid}\">"
                 f"{h(u.get('name') or '—')}</a></b>\n"
@@ -1387,7 +1472,7 @@ class UnicornGame:
             cur = u.get("color") or "classic"
             pts = u.get("points") or 0
             lines = [
-                f"{PE('diamond','💎')} <b>رنگ‌های یونیکورن</b>",
+                f"{PE('diamond','💎')} <b>رنگ‌های یونیکورن</b> {PE('diamond','💎')}",
                 f"{DIV}",
                 f"{PE('gem','💎')} موجودی: <code>{fmt_num(pts)}</code>",
                 f"🎨 فعلی: <code>{SKINS.get(cur, SKINS['classic'])[1]}</code>",
@@ -1451,7 +1536,7 @@ class UnicornGame:
             except Exception:
                 ach = []
             lines = [
-                f"{PE('trophy','🏆')} <b>دستاوردها</b>",
+                f"{PE('trophy','🏆')} <b>دستاوردها</b> {PE('trophy','🏆')}",
                 f"{DIV}",
                 f"✅ باز شده: <code>{len(ach)}/{len(ACHIEVEMENTS)}</code>",
                 f"{DIV2}",
@@ -1489,7 +1574,7 @@ class UnicornGame:
             decorations = "🌷🌻🌷" if level < 3 else "🌹🌸🌺" if level < 6 else "🌌✨🌟"
 
             lines = [
-                f"🏠 <b>خـانـه‌ی یـونـیـکـورن</b>",
+                f"🏠 {PE('sparkle','✨')} <b>خـانـه‌ی یـونـیـکـورن</b> {PE('sparkle','✨')}",
                 f"{DIV}",
                 f"     {decorations}",
                 f"     {skin_e} {face}",
@@ -1500,11 +1585,13 @@ class UnicornGame:
                 f"{PE('wave','👋')} نیه: <b>{u.get('neigh_count', 0)}</b>",
             ]
             if marr:
-                lines.append(f"💖 همسر: <a href=\"tg://user?id={marr}\">متأهل</a>")
+                lines.append(f"{PE('heart','💖')} همسر: "
+                             f"<a href=\"tg://user?id={marr}\">متأهل</a>")
             else:
-                lines.append("💖 مجرد")
+                lines.append(f"{PE('heart','💖')} مجرد")
             lines.append(f"🥚 تخم: <code>{u.get('eggs', 0)}</code>")
-            lines.append(f"🏆 دستاورد: <code>{len(ach)}/{len(ACHIEVEMENTS)}</code>")
+            lines.append(f"{PE('trophy','🏆')} دستاورد: "
+                         f"<code>{len(ach)}/{len(ACHIEVEMENTS)}</code>")
 
             btns = [[Button.inline("🔙 بازگشت", data=f"uni:back:{uid}".encode())]]
             await self._safe_edit_msg(event.chat_id, event.message_id,
