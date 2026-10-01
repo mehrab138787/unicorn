@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-🦄 UNICORN PET GAME — Royal Edition v8
+🦄 UNICORN PET GAME — Royal Edition v9
 💔 Divorce · 🥚 6h Hatch · 🐣 Babies · 💰 Passive income
+⚔️ Strategic Battle System · 🔫 Weapon Tiers · 👑 Iranian Heroes
 """
 
 import re, random, asyncio, logging, time, json
@@ -125,6 +126,86 @@ BATTLE_WORDS = [
     "🗡️ ضـربـه‌ی نـهـایـی!",
 ]
 
+# ═══════════════════════════════════════════════════════════
+# ⚔️ STRATEGIC BATTLE SYSTEM
+# ═══════════════════════════════════════════════════════════
+BATTLE_REWARD_MIN = 50_000
+BATTLE_REWARD_MAX = 100_000
+SOLDIER_COST_BASE = 100_000
+SOLDIER_BASE_POWER = 10
+BATTLE_VARIANCE = 0.05
+
+WEAPON_TIERS = {
+    0: ("🪨", "عصر سنگ و چوب"),
+    1: ("⚒️", "عصر مفرغ"),
+    2: ("🗡️", "عصر آهن"),
+    3: ("⚔️", "عصر فولاد"),
+    4: ("💥", "عصر باروت"),
+    5: ("🔫", "عصر مدرن"),
+    6: ("⚡", "عصر پیشرفته"),
+    7: ("🌟", "عصر آینده"),
+    8: ("🌌", "فرا نوین"),
+}
+
+# key: (name, emoji, tier, power, cost)
+WEAPONS = {
+    "club_stone":    ("چماق سنگی",       "🪨", 0, 10,        50_000),
+    "spear_wood":    ("نیزه چوبی",       "🪵", 0, 25,        150_000),
+    "axe_stone":     ("تبر سنگی",        "🪓", 0, 40,        400_000),
+    "bow_wood":      ("کمان چوبی",       "🏹", 0, 60,        1_000_000),
+
+    "sword_bronze":  ("شمشیر مفرغی",     "⚒️", 1, 120,       2_500_000),
+    "shield_bronze": ("سپر مفرغی",       "🛡️", 1, 180,       5_000_000),
+    "spear_bronze":  ("نیزه مفرغی",      "🔱", 1, 250,       10_000_000),
+
+    "sword_iron":    ("شمشیر آهنی",      "🗡️", 2, 400,       25_000_000),
+    "axe_iron":      ("تبر جنگی",        "🪓", 2, 600,       50_000_000),
+    "bow_iron":      ("کمان آهنی",       "🏹", 2, 850,       100_000_000),
+
+    "sword_steel":   ("شمشیر فولادی",    "⚔️", 3, 1_300,     250_000_000),
+    "shield_steel":  ("سپر فولادی",      "🛡️", 3, 1_800,     500_000_000),
+    "crossbow":      ("تیرکمان فولادی",  "🎯", 3, 2_500,     1_000_000_000),
+
+    "musket":        ("تفنگ سرپر",       "💥", 4, 4_000,     2_500_000_000),
+    "cannon":        ("توپ جنگی",        "💣", 4, 6_000,     5_000_000_000),
+    "grenade":       ("نارنجک",          "🧨", 4, 9_000,     10_000_000_000),
+
+    "rifle":         ("تفنگ جنگی",       "🔫", 5, 15_000,    25_000_000_000),
+    "sniper":        ("اسنایپر",         "🎯", 5, 25_000,    50_000_000_000),
+    "machinegun":    ("مسلسل سنگین",     "🔫", 5, 40_000,    100_000_000_000),
+
+    "laser":         ("لیزر پلاسما",     "⚡", 6, 75_000,    250_000_000_000),
+    "railgun":       ("ریلگان",          "🌟", 6, 120_000,   500_000_000_000),
+    "drone":         ("پهپاد رزمی",      "🛸", 6, 200_000,   1_000_000_000_000),
+
+    "plasma":        ("تفنگ پلاسما",     "💫", 7, 400_000,   2_500_000_000_000),
+    "antimatter":    ("توپ ضد ماده",     "🌌", 7, 700_000,   5_000_000_000_000),
+    "quantum":       ("سلاح کوانتومی",   "🌀", 7, 1_200_000, 10_000_000_000_000),
+
+    "blackhole":     ("توپ سیاه‌چاله",   "🕳️", 8, 3_000_000, 25_000_000_000_000),
+    "nova":          ("نواختر",          "💥", 8, 5_000_000, 50_000_000_000_000),
+    "godslayer":     ("خداشکن",          "👁️", 8, 10_000_000,100_000_000_000_000),
+}
+
+# key: (name, emoji, power, cost)
+HEROES = {
+    "arash":       ("آرش کمانگیر",   "🏹", 5_000,    50_000_000),
+    "kaveh":       ("کاوه آهنگر",    "⚒️", 8_000,    100_000_000),
+    "babak":       ("بابک خرمدین",   "🔥", 12_000,   200_000_000),
+    "ariobarzan":  ("آریوبرزن",      "🦅", 18_000,   400_000_000),
+    "yaqub":       ("یعقوب لیث",     "⚔️", 25_000,   800_000_000),
+    "cyrus":       ("کوروش بزرگ",    "👑", 40_000,   2_000_000_000),
+    "darius":      ("داریوش بزرگ",   "🏛️", 55_000,   4_000_000_000),
+    "esfandiar":   ("اسفندیار",      "🛡️", 75_000,   8_000_000_000),
+    "sohrab":      ("سهراب",         "🦁", 100_000,  15_000_000_000),
+    "siavash":     ("سیاوش",         "🕊️", 130_000,  25_000_000_000),
+    "zal":         ("زال زر",        "🦅", 170_000,  40_000_000_000),
+    "goudarz":     ("گودرز",         "🗡️", 200_000,  60_000_000_000),
+    "bahram":      ("بهرام گور",     "🐗", 260_000,  90_000_000_000),
+    "nader":       ("نادر شاه",      "👑", 350_000,  150_000_000_000),
+    "rostam":      ("رستم دستان",    "🦸", 500_000,  250_000_000_000),
+}
+
 DIV = "━━━━━━━━━━━━━━━━━━━━━━━━━━"
 DIV2 = "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈"
 
@@ -142,6 +223,7 @@ PREM = {
     "alert": "5447644880824181073", "hourglass": "5458603043203327669",
     "message": "5443038326535759644", "diamond": "5404654051945521778",
     "chart": "5231200819986047254", "eye": "5397782960512444700",
+    "brain": "5323442290708985472",
 }
 
 _TG_EMOJI_RE = re.compile(r'<tg-emoji emoji-id="\d+">([^<]*)</tg-emoji>')
@@ -176,10 +258,16 @@ def normalize_fa(text):
 def fmt_num(n):
     try: n = int(n)
     except Exception: return "0"
+    if n >= 1_000_000_000_000: return f"{n/1_000_000_000_000:.2f}T"
     if n >= 1_000_000_000: return f"{n/1_000_000_000:.2f}B"
     if n >= 1_000_000: return f"{n/1_000_000:.2f}M"
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(n)
+
+
+def fmt_full(n):
+    try: return f"{int(n):,}"
+    except Exception: return "0"
 
 
 def parse_amount(s):
@@ -364,10 +452,29 @@ class UnicornGame:
             born_at BIGINT NOT NULL,
             last_income BIGINT
         )""")
+        # ═══ STRATEGIC BATTLE TABLES ═══
+        c.execute("""CREATE TABLE IF NOT EXISTS uni_weapons (
+            user_id BIGINT NOT NULL,
+            weapon_key TEXT NOT NULL,
+            count INTEGER DEFAULT 1,
+            PRIMARY KEY (user_id, weapon_key)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS uni_heroes (
+            user_id BIGINT NOT NULL,
+            hero_key TEXT NOT NULL,
+            count INTEGER DEFAULT 1,
+            PRIMARY KEY (user_id, hero_key)
+        )""")
+        c.execute("""CREATE TABLE IF NOT EXISTS uni_army (
+            user_id BIGINT PRIMARY KEY,
+            soldier_count INTEGER DEFAULT 0,
+            active_weapon TEXT DEFAULT 'club_stone',
+            updated_at BIGINT DEFAULT 0
+        )""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_uni_points ON unicorns(points DESC)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_eggs_lookup ON unicorn_eggs(user_id, partner_id, hatched_at)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_babies_lookup ON unicorn_babies(user_id, partner_id)""")
-        logger.info("🦄 Unicorn tables ready")
+        logger.info("🦄 Unicorn tables ready (incl. strategic battle)")
 
     def register_handlers(self):
         self.client.add_event_handler(self.on_message, events.NewMessage())
@@ -440,6 +547,116 @@ class UnicornGame:
         try_unlock("daily_7", (u.get("daily_streak") or 0) >= 7)
         try_unlock("daily_30", (u.get("daily_streak") or 0) >= 30)
         return new_ones
+
+    # ═══════════ STRATEGIC BATTLE HELPERS ═══════════
+    def get_army(self, uid):
+        c = self._c()
+        c.execute("SELECT * FROM uni_army WHERE user_id=%s", (uid,))
+        r = c.fetchone()
+        if r: return dict(r)
+        c.execute("""INSERT INTO uni_army (user_id, soldier_count, active_weapon, updated_at)
+                     VALUES (%s, 0, 'club_stone', %s) ON CONFLICT (user_id) DO NOTHING""",
+                  (uid, now_ts()))
+        c.execute("SELECT * FROM uni_army WHERE user_id=%s", (uid,))
+        return dict(c.fetchone())
+
+    def get_weapons(self, uid):
+        c = self._c()
+        c.execute("SELECT * FROM uni_weapons WHERE user_id=%s", (uid,))
+        return {r["weapon_key"]: dict(r) for r in c.fetchall()}
+
+    def get_heroes(self, uid):
+        c = self._c()
+        c.execute("SELECT * FROM uni_heroes WHERE user_id=%s", (uid,))
+        return {r["hero_key"]: dict(r) for r in c.fetchall()}
+
+    def has_weapon(self, uid, key):
+        c = self._c()
+        c.execute("SELECT 1 FROM uni_weapons WHERE user_id=%s AND weapon_key=%s",
+                  (uid, key))
+        return c.fetchone() is not None
+
+    def has_hero(self, uid, key):
+        c = self._c()
+        c.execute("SELECT 1 FROM uni_heroes WHERE user_id=%s AND hero_key=%s",
+                  (uid, key))
+        return c.fetchone() is not None
+
+    def buy_weapon(self, uid, key):
+        if key not in WEAPONS: return False, "نامعتبر"
+        if self.has_weapon(uid, key): return False, "قبلاً داری"
+        w = WEAPONS[key]
+        u = self.get_unicorn(uid)
+        if (u.get("points") or 0) < w[4]: return False, "پوینت کافی نداری"
+        self.update(uid, points=(u.get("points") or 0) - w[4])
+        c = self._c()
+        c.execute("INSERT INTO uni_weapons (user_id, weapon_key, count) VALUES (%s,%s,1)",
+                  (uid, key))
+        return True, "خرید موفق"
+
+    def equip_weapon(self, uid, key):
+        if key not in WEAPONS: return False
+        if not self.has_weapon(uid, key): return False
+        self.get_army(uid)
+        c = self._c()
+        c.execute("UPDATE uni_army SET active_weapon=%s, updated_at=%s WHERE user_id=%s",
+                  (key, now_ts(), uid))
+        return True
+
+    def buy_hero(self, uid, key):
+        if key not in HEROES: return False, "نامعتبر"
+        if self.has_hero(uid, key): return False, "قبلاً داری"
+        hd = HEROES[key]
+        u = self.get_unicorn(uid)
+        if (u.get("points") or 0) < hd[3]: return False, "پوینت کافی نداری"
+        self.update(uid, points=(u.get("points") or 0) - hd[3])
+        c = self._c()
+        c.execute("INSERT INTO uni_heroes (user_id, hero_key, count) VALUES (%s,%s,1)",
+                  (uid, key))
+        return True, "خرید موفق"
+
+    def train_soldiers(self, uid, count):
+        if count < 1 or count > 100: return False, "تعداد نامعتبر (1-100)"
+        cost = SOLDIER_COST_BASE * count
+        u = self.get_unicorn(uid)
+        if (u.get("points") or 0) < cost: return False, f"{fmt_num(cost)} پوینت لازمه"
+        self.update(uid, points=(u.get("points") or 0) - cost)
+        self.get_army(uid)
+        c = self._c()
+        c.execute("UPDATE uni_army SET soldier_count=soldier_count+%s, updated_at=%s WHERE user_id=%s",
+                  (count, now_ts(), uid))
+        return True, f"{count} سرباز آموزش دید"
+
+    def compute_power(self, uid):
+        army = self.get_army(uid)
+        weapons = self.get_weapons(uid)
+        heroes = self.get_heroes(uid)
+
+        active_key = army.get("active_weapon") or "club_stone"
+        if active_key not in weapons:
+            if "club_stone" in WEAPONS:
+                active_key = "club_stone"
+        w = WEAPONS.get(active_key)
+        w_power = w[3] if w else 0
+
+        soldier_count = army.get("soldier_count") or 0
+        soldier_power = soldier_count * (w_power + SOLDIER_BASE_POWER)
+
+        hero_power = 0
+        for hk in heroes:
+            if hk in HEROES:
+                hero_power += HEROES[hk][2]
+
+        total = soldier_power + hero_power
+        return {
+            "soldier_power": soldier_power,
+            "hero_power": hero_power,
+            "total": total,
+            "weapon_key": active_key,
+            "weapon_power": w_power,
+            "soldier_count": soldier_count,
+            "heroes_count": len(heroes),
+        }
 
     # ═══════════ EGGS & BABIES ═══════════
     def get_eggs(self, uid):
@@ -528,7 +745,6 @@ class UnicornGame:
         egg_id = egg["id"]
         user_id = egg["user_id"]
         partner_id = egg["partner_id"]
-        # اسم کیوت رندوم
         name = random.choice(BABY_NAMES)
         c = self._c()
         c.execute("""INSERT INTO unicorn_babies
@@ -538,7 +754,6 @@ class UnicornGame:
         baby_id = c.fetchone()["id"]
         c.execute("""UPDATE unicorn_eggs SET hatched_at=%s, baby_id=%s WHERE id=%s""",
                   (ts, baby_id, egg_id))
-        # دستاورد
         for u in (user_id, partner_id):
             if u and u != 0:
                 self.add_achievement(u, "first_baby")
@@ -555,10 +770,9 @@ class UnicornGame:
             last = baby.get("last_income") or baby.get("born_at") or ts
             elapsed = ts - last
             if elapsed < 60:
-                continue  # هر ۶۰ ثانیه یه بار
+                continue
             rate_per_sec = (baby.get("level", 1) * BABY_INCOME_PER_LEVEL_PER_DAY) / 86400
             income = elapsed * rate_per_sec
-            # اضافه به پوینت هر دو طرف اگه نی‌قهر نباشن
             for uid in (baby["user_id"], baby["partner_id"]):
                 if not uid or uid == 0: continue
                 u = self.get_unicorn(uid)
@@ -634,11 +848,16 @@ class UnicornGame:
                     await self._divorce_hint(event); return
                 await self._handle_divorce(event, uid); return
 
-            # ─── دوئل ───
-            if low in ("دویل", "دوئل", "نبرد", "مبارزه", "جنگ", "بجنگ"):
+            # ─── دوئل استراتژیک ───
+            if low in ("دویل", "دوئل", "نبرد", "مبارزه", "جنگ", "بجنگ", "دوعل"):
                 if not event.reply_to_msg_id:
-                    await self._battle_hint(event); return
+                    await self._show_battle_panel(event.chat_id, uid, reply_to=event.id); return
                 await self._handle_battle(event, uid); return
+
+            # ─── پنل استراتژیک ───
+            if low in ("تنظیمات دوئل", "تنظیمات دوعل", "تنظیمات نبرد",
+                       "زرادخانه", "ارتش", "قهرمانان", "سلاح", "armory"):
+                await self._show_battle_panel(event.chat_id, uid, reply_to=event.id); return
 
             # ─── ازدواج ───
             if low in ("ازدواج", "ازدواج کن", "بگیر"):
@@ -785,7 +1004,15 @@ class UnicornGame:
         line5 = f"🍰 {hunger_bar(hunger)} <code>{hunger}%</code>"
         line6 = f"{PE('wave','👋')} نیه: <b>{neigh}</b>"
 
-        # eggs & babies
+        # battle power
+        try:
+            p = self.compute_power(uid)
+            battle_line = f"\n⚔️ قدرت رزمی: <code>{fmt_full(p['total'])}</code>"
+            if p['soldier_count'] > 0 or p['heroes_count'] > 0:
+                battle_line += f"  ·  🛡️{p['soldier_count']}  ·  👑{p['heroes_count']}"
+        except Exception:
+            battle_line = ""
+
         eggs = self.count_eggs(uid)
         babies = self.count_babies(uid)
         baby_income = self.babies_income_per_day(uid)
@@ -825,7 +1052,7 @@ class UnicornGame:
         parts.append("")
         parts.append(line4)
         parts.append(line5)
-        parts.append(line6 + family_line)
+        parts.append(line6 + family_line + battle_line)
         parts.append(DIV2)
         parts.append(lvl_block)
         return "\n".join(parts)
@@ -838,17 +1065,17 @@ class UnicornGame:
              Button.inline("🎰 گردونه", data=f"uni:spin:{uid}".encode())],
             [Button.inline("🎨 رنگ‌ها", data=f"uni:skins:{uid}".encode()),
              Button.inline("🏆 دستاوردها", data=f"uni:ach:{uid}".encode())],
-            [Button.inline("🥊 دوئل", data=f"uni:battle:{uid}".encode()),
-             Button.inline("💍 ازدواج", data=f"uni:marry:{uid}".encode())],
+            [Button.inline("⚔️ دوئل استراتژیک", data=f"uni:armory:{uid}".encode())],
+            [Button.inline("💍 ازدواج", data=f"uni:marry:{uid}".encode()),
+             Button.inline("💔 طلاق", data=f"uni:divorce:{uid}".encode())],
             [Button.inline("🥚 تخم", data=f"uni:breed:{uid}".encode()),
              Button.inline("🐣 بیبی‌ها", data=f"uni:babies:{uid}".encode())],
-            [Button.inline("💔 طلاق", data=f"uni:divorce:{uid}".encode()),
-             Button.inline("💸 انتقال", data=f"uni:transfer:{uid}".encode())],
-            [Button.inline("🏠 خانه", data=f"uni:home:{uid}".encode()),
-             Button.inline("🏅 لیدربورد", data=f"uni:top:{uid}".encode())],
-            [Button.inline("📊 آمار", data=f"uni:stats:{uid}".encode()),
-             Button.inline("🆘 راهنما", data=f"uni:help:{uid}".encode())],
-            [Button.inline("🔄 بروزرسانی", data=f"uni:refresh:{uid}".encode())],
+            [Button.inline("💸 انتقال", data=f"uni:transfer:{uid}".encode()),
+             Button.inline("🏠 خانه", data=f"uni:home:{uid}".encode())],
+            [Button.inline("🏅 لیدربورد", data=f"uni:top:{uid}".encode()),
+             Button.inline("📊 آمار", data=f"uni:stats:{uid}".encode())],
+            [Button.inline("🆘 راهنما", data=f"uni:help:{uid}".encode()),
+             Button.inline("🔄 بروزرسانی", data=f"uni:refresh:{uid}".encode())],
         ]
 
     # ═══════════ NEIGH ═══════════
@@ -1097,7 +1324,6 @@ class UnicornGame:
                 upd["hunger"] = 100; upd["angry"] = 0; upd["last_hunger_tick"] = ts
                 flash += "\n🍰 سیری فول!"
             elif kind == "egg":
-                # تخم جدید در جدول
                 partner = u.get("married_to") or 0
                 if partner:
                     c = self._c()
@@ -1128,12 +1354,7 @@ class UnicornGame:
 
     # ═══════════ HINTS ═══════════
     async def _battle_hint(self, event):
-        await self._safe_send(event.chat_id,
-            f"🥊 {PE('fire','🔥')} <b>دوئل</b>\n"
-            f"{DIV}\n"
-            f"روی پیام حریف <b>ریپلای</b> کن و بنویس <code>دوئل</code>\n"
-            f"{PE('gift','🎁')} جایزه <code>1000-10000</code>",
-            parse_mode="html", reply_to=event.id)
+        await self._show_battle_panel(event.chat_id, event.sender_id, reply_to=event.id)
 
     async def _marry_hint(self, event):
         await self._safe_send(event.chat_id,
@@ -1198,17 +1419,256 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"transfer: {e}")
 
+    # ═══════════ STRATEGIC BATTLE PANEL ═══════════
+    async def _show_battle_panel(self, chat_id, uid, reply_to=None, edit_msg=None):
+        try:
+            u = self.get_unicorn(uid)
+            if not u:
+                await self._safe_send(chat_id,
+                    f"{PE('cross','❌')} اول <code>نیه</code> بزن.", parse_mode="html")
+                return
+            p = self.compute_power(uid)
+            w = WEAPONS.get(p["weapon_key"], ("؟", "❓", 0, 0, 0))
+            pts = u.get("points", 0)
+
+            text = (
+                f"⚔️ {PE('fire','🔥')} <b>تنظیمات دوئل استراتژیک</b> {PE('fire','🔥')}\n"
+                f"{DIV}\n"
+                f"💪 <b>قدرت کل رزمی:</b> <code>{fmt_full(p['total'])}</code>\n"
+                f"{DIV2}\n"
+                f"{w[1]} <b>سلاح فعال:</b> <code>{w[0]}</code>\n"
+                f"   💥 قدرت هر سرباز: <code>{fmt_full(p['weapon_power'] + SOLDIER_BASE_POWER)}</code>\n"
+                f"🛡️ <b>سربازان:</b> <code>{p['soldier_count']}</code>  ·  "
+                f"قدرت ارتش: <code>{fmt_full(p['soldier_power'])}</code>\n"
+                f"👑 <b>قهرمانان:</b> <code>{p['heroes_count']}</code>  ·  "
+                f"قدرت: <code>{fmt_full(p['hero_power'])}</code>\n"
+                f"{DIV2}\n"
+                f"{PE('gem','💎')} موجودی: <code>{fmt_full(pts)}</code>\n"
+                f"{DIV2}\n"
+                f"{PE('info','ℹ️')} <i>فرمول قدرت:</i>\n"
+                f"   👑 مجموع قدرت قهرمانان + (🛡️ تعداد سرباز × 💥 قدرت سلاح)\n"
+                f"\n{PE('fire','🔥')} <i>برای شروع دوئل روی پیام حریف ریپلای کن و بنویس</i> <code>دوئل</code>"
+            )
+            btns = [
+                [Button.inline("🔫 زرادخانه", data=f"uni:armory_weap:{uid}".encode()),
+                 Button.inline("👑 قهرمانان", data=f"uni:armory_hero:{uid}".encode())],
+                [Button.inline("🛡️ ارتش", data=f"uni:armory_army:{uid}".encode()),
+                 Button.inline("📊 آمار رزمی", data=f"uni:armory_stats:{uid}".encode())],
+                [Button.inline("🔙 بازگشت به پروفایل", data=f"uni:back:{uid}".encode())],
+            ]
+            if edit_msg:
+                await self._safe_edit_msg(chat_id, edit_msg, text, buttons=btns)
+            else:
+                kwargs = {"parse_mode": "html", "buttons": btns}
+                if reply_to: kwargs["reply_to"] = reply_to
+                await self._safe_send(chat_id, text, **kwargs)
+        except Exception as e:
+            logger.exception(f"battle panel: {e}")
+
+    async def _show_armory_weapons(self, event, uid):
+        try:
+            u = self.get_unicorn(uid)
+            pts = u.get("points", 0) if u else 0
+            owned = self.get_weapons(uid)
+            army = self.get_army(uid)
+            active = army.get("active_weapon") or "club_stone"
+
+            lines = [
+                f"🔫 {PE('fire','🔥')} <b>زرادخانه</b> {PE('fire','🔥')}",
+                f"{DIV}",
+                f"{PE('gem','💎')} موجودی: <code>{fmt_full(pts)}</code>",
+                f"🎯 سلاح فعال: <code>{WEAPONS.get(active, ('?',))[0]}</code>",
+                f"{DIV2}",
+            ]
+            btns = []
+            cur_tier = -1
+            for key, (name, emoji, tier, power, cost) in WEAPONS.items():
+                if tier != cur_tier:
+                    cur_tier = tier
+                    te, tn = WEAPON_TIERS[tier]
+                    lines.append(f"\n{te} <b>{tn}</b>")
+                is_owned = key in owned
+                is_active = key == active
+                if is_active:
+                    lines.append(f"  🎯 {emoji} <b>{name}</b> · 💥<code>{fmt_full(power)}</code> <i>(فعال)</i>")
+                    btns.append([Button.inline(f"🎯 {emoji} {name} · فعال",
+                        data=b"uni:noop")])
+                elif is_owned:
+                    lines.append(f"  ✅ {emoji} <b>{name}</b> · 💥<code>{fmt_full(power)}</code>")
+                    btns.append([Button.inline(f"⚙️ استفاده: {emoji} {name}",
+                        data=f"uni:weapon_click:{key}".encode())])
+                else:
+                    mark = "🟢" if pts >= cost else "🔴"
+                    lines.append(f"  🔒 {emoji} <b>{name}</b> · 💥<code>{fmt_full(power)}</code> · 💎<code>{fmt_num(cost)}</code>")
+                    btns.append([Button.inline(f"{mark} خرید {emoji} {name} · {fmt_num(cost)}",
+                        data=f"uni:weapon_click:{key}".encode())])
+
+            btns.append([Button.inline("🔙 بازگشت", data=f"uni:armory:{uid}".encode())])
+            text = "\n".join(lines)
+            if len(text) > 4000:
+                text = text[:3900] + "\n..."
+            await self._safe_edit_msg(event.chat_id, event.message_id, text, buttons=btns)
+        except Exception as e:
+            logger.exception(f"armory weap: {e}")
+
+    async def _show_armory_heroes(self, event, uid):
+        try:
+            u = self.get_unicorn(uid)
+            pts = u.get("points", 0) if u else 0
+            owned = self.get_heroes(uid)
+
+            lines = [
+                f"👑 {PE('crown','👑')} <b>قهرمانان ایران‌زمین</b>",
+                f"{DIV}",
+                f"{PE('gem','💎')} موجودی: <code>{fmt_full(pts)}</code>",
+                f"👥 قهرمانان شما: <code>{len(owned)}</code>",
+                f"{DIV2}",
+            ]
+            btns = []
+            for key, (name, emoji, power, cost) in HEROES.items():
+                if key in owned:
+                    lines.append(f"  ✅ {emoji} <b>{name}</b> · 💪<code>{fmt_full(power)}</code>")
+                    btns.append([Button.inline(f"✅ {emoji} {name} · دارید",
+                        data=b"uni:noop")])
+                else:
+                    mark = "🟢" if pts >= cost else "🔴"
+                    lines.append(f"  🔒 {emoji} <b>{name}</b> · 💪<code>{fmt_full(power)}</code> · 💎<code>{fmt_num(cost)}</code>")
+                    btns.append([Button.inline(f"{mark} {emoji} {name} · {fmt_num(cost)}",
+                        data=f"uni:hero_click:{key}".encode())])
+
+            btns.append([Button.inline("🔙 بازگشت", data=f"uni:armory:{uid}".encode())])
+            text = "\n".join(lines)
+            if len(text) > 4000:
+                text = text[:3900] + "\n..."
+            await self._safe_edit_msg(event.chat_id, event.message_id, text, buttons=btns)
+        except Exception as e:
+            logger.exception(f"armory hero: {e}")
+
+    async def _show_armory_army(self, event, uid):
+        try:
+            army = self.get_army(uid)
+            p = self.compute_power(uid)
+            u = self.get_unicorn(uid)
+            pts = u.get("points", 0) if u else 0
+            count = army.get("soldier_count") or 0
+            w = WEAPONS.get(army.get("active_weapon"), ("?", "?", 0, 0, 0))
+
+            text = (
+                f"🛡️ <b>ارتش</b>\n"
+                f"{DIV}\n"
+                f"👥 <b>تعداد سربازان:</b> <code>{count}</code>\n"
+                f"🔫 <b>سلاح سربازان:</b> {w[1]} <code>{w[0]}</code>\n"
+                f"💥 <b>قدرت هر سرباز:</b> <code>{fmt_full(p['weapon_power'] + SOLDIER_BASE_POWER)}</code>\n"
+                f"⚡ <b>قدرت کل ارتش:</b> <code>{fmt_full(p['soldier_power'])}</code>\n"
+                f"{DIV2}\n"
+                f"{PE('gem','💎')} موجودی: <code>{fmt_full(pts)}</code>\n"
+                f"💵 هزینه هر سرباز: <code>{fmt_full(SOLDIER_COST_BASE)}</code>\n"
+                f"{DIV2}\n"
+                f"{PE('info','ℹ️')} <i>سربازان با سلاح فعال شما می‌جنگند!</i>\n"
+                f"{PE('bolt','⚡')} <i>برای قدرت بیشتر، سلاح بهتر در زرادخانه تهیه کنید.</i>"
+            )
+            btns = [
+                [Button.inline("➕ ۱ سرباز", data=b"uni:train:1"),
+                 Button.inline("➕ ۵ سرباز", data=b"uni:train:5")],
+                [Button.inline("➕ ۱۰ سرباز", data=b"uni:train:10"),
+                 Button.inline("➕ ۵۰ سرباز", data=b"uni:train:50")],
+                [Button.inline("➕ ۱۰۰ سرباز", data=b"uni:train:100")],
+                [Button.inline("🔙 بازگشت", data=f"uni:armory:{uid}".encode())],
+            ]
+            await self._safe_edit_msg(event.chat_id, event.message_id, text, buttons=btns)
+        except Exception as e:
+            logger.exception(f"armory army: {e}")
+
+    async def _show_armory_stats(self, event, uid):
+        try:
+            p = self.compute_power(uid)
+            army = self.get_army(uid)
+            w = WEAPONS.get(p["weapon_key"], ("?", "?", 0, 0, 0))
+            heroes = self.get_heroes(uid)
+            weapons = self.get_weapons(uid)
+
+            hero_lines = []
+            for hk in heroes:
+                if hk in HEROES:
+                    name, emoji, power, cost = HEROES[hk]
+                    hero_lines.append(f"   {emoji} {name} · 💪<code>{fmt_full(power)}</code>")
+            if not hero_lines:
+                hero_lines.append("   <i>قهرمانی نداری</i>")
+
+            text = (
+                f"📊 {PE('chart','📊')} <b>آمار رزمی</b>\n"
+                f"{DIV}\n"
+                f"⚔️ <b>قدرت کل:</b> <code>{fmt_full(p['total'])}</code>\n"
+                f"{DIV2}\n"
+                f"🔫 <b>سلاح فعال:</b> {w[1]} {w[0]}\n"
+                f"   قدرت هر سرباز: <code>{fmt_full(p['weapon_power'] + SOLDIER_BASE_POWER)}</code>\n"
+                f"{DIV2}\n"
+                f"🛡️ <b>ارتش:</b>\n"
+                f"   تعداد: <code>{p['soldier_count']}</code>\n"
+                f"   قدرت کل ارتش: <code>{fmt_full(p['soldier_power'])}</code>\n"
+                f"{DIV2}\n"
+                f"👑 <b>قهرمانان ({len(heroes)}):</b>\n" + "\n".join(hero_lines) + "\n"
+                f"   قدرت قهرمانان: <code>{fmt_full(p['hero_power'])}</code>\n"
+                f"{DIV2}\n"
+                f"🎒 <b>زرادخانه:</b> <code>{len(weapons)}/{len(WEAPONS)}</code> سلاح\n"
+                f"{DIV2}\n"
+                f"{PE('info','ℹ️')} <i>هر سرباز = قدرت سلاح + {SOLDIER_BASE_POWER}</i>\n"
+                f"{PE('fire','🔥')} <i>جایزه هر دوئل: ۵۰K تا ۱۰۰K پوینت</i>"
+            )
+            btns = [[Button.inline("🔙 بازگشت", data=f"uni:armory:{uid}".encode())]]
+            await self._safe_edit_msg(event.chat_id, event.message_id, text, buttons=btns)
+        except Exception as e:
+            logger.exception(f"armory stats: {e}")
+
+    async def _weapon_click(self, event, uid, key):
+        try:
+            if key not in WEAPONS:
+                await self._safe_answer(event, "نامعتبر", alert=True); return
+            w = WEAPONS[key]
+            if self.has_weapon(uid, key):
+                # equip
+                self.equip_weapon(uid, key)
+                await self._safe_answer(event, f"✅ {w[1]} {w[0]} فعال شد")
+            else:
+                ok, msg = self.buy_weapon(uid, key)
+                if ok:
+                    self.equip_weapon(uid, key)
+                    await self._safe_answer(event, f"🎉 خرید و فعال شد: {w[1]} {w[0]}")
+                else:
+                    await self._safe_answer(event, f"❌ {msg}", alert=True)
+                    return
+            await self._show_armory_weapons(event, uid)
+        except Exception as e:
+            logger.exception(f"weapon click: {e}")
+
+    async def _hero_click(self, event, uid, key):
+        try:
+            if key not in HEROES:
+                await self._safe_answer(event, "نامعتبر", alert=True); return
+            hd = HEROES[key]
+            ok, msg = self.buy_hero(uid, key)
+            if ok:
+                await self._safe_answer(event, f"🎉 قهرمان اضافه شد: {hd[1]} {hd[0]}")
+            else:
+                await self._safe_answer(event, f"❌ {msg}", alert=True)
+                return
+            await self._show_armory_heroes(event, uid)
+        except Exception as e:
+            logger.exception(f"hero click: {e}")
+
     # ═══════════ BATTLE ═══════════
     async def _handle_battle(self, event, uid):
         try:
             rm = await event.get_reply_message()
-            if not rm: return
+            if not rm:
+                await self._show_battle_panel(event.chat_id, uid, reply_to=event.id)
+                return
             target = rm.sender_id
             if target == uid:
                 await self._safe_send(event.chat_id, f"{PE('cross','❌')} با خودت!",
                     parse_mode="html", reply_to=event.id); return
             try:
-                ts = await self.client.get_entity(target); tname = user_name(ts)
+                ent = await self.client.get_entity(target); tname = user_name(ent)
             except Exception: tname = str(target)
             self.get_or_create(target, tname)
             a = self.get_unicorn(uid); b = self.get_unicorn(target)
@@ -1216,16 +1676,40 @@ class UnicornGame:
                 await self._safe_send(event.chat_id,
                     f"{PE('cross','❌')} یه یونیکورن قهره! اول غذا بدین.",
                     parse_mode="html", reply_to=event.id); return
-            a_pow = ((a.get("level") or 1) * 100 + (a.get("neigh_count") or 0) +
-                     (a.get("battles_won") or 0) * 20 + random.randint(0, 200))
-            b_pow = ((b.get("level") or 1) * 100 + (b.get("neigh_count") or 0) +
-                     (b.get("battles_won") or 0) * 20 + random.randint(0, 200))
+
+            pa = self.compute_power(uid)
+            pb = self.compute_power(target)
+
+            if pa["total"] == 0 and pb["total"] == 0:
+                await self._safe_send(event.chat_id,
+                    f"{PE('warning','⚠️')} هیچکدوم ارتشی ندارید!\n"
+                    f"از <code>تنظیمات دوئل</code> شروع کنید.",
+                    parse_mode="html", reply_to=event.id); return
+            if pa["total"] == 0:
+                await self._safe_send(event.chat_id,
+                    f"{PE('warning','⚠️')} تو ارتشی نداری!\n"
+                    f"اول <code>تنظیمات دوئل</code> رو باز کن.",
+                    parse_mode="html", reply_to=event.id); return
+            if pb["total"] == 0:
+                await self._safe_send(event.chat_id,
+                    f"{PE('warning','⚠️')} حریف ارتشی نداره!",
+                    parse_mode="html", reply_to=event.id); return
+
+            va = 1 + random.uniform(-BATTLE_VARIANCE, BATTLE_VARIANCE)
+            vb = 1 + random.uniform(-BATTLE_VARIANCE, BATTLE_VARIANCE)
+            pow_a = pa["total"] * va
+            pow_b = pb["total"] * vb
+
             a_name = h(a.get("name") or "—"); b_name = h(b.get("name") or "—")
-            if a_pow >= b_pow:
-                winner, loser = a, b; winner_uid, loser_uid = uid, target
+
+            if pow_a >= pow_b:
+                winner, loser = a, b
+                winner_uid, loser_uid = uid, target
             else:
-                winner, loser = b, a; winner_uid, loser_uid = target, uid
-            reward = min(1000 + (winner.get("level") or 1) * 300, 10000)
+                winner, loser = b, a
+                winner_uid, loser_uid = target, uid
+
+            reward = random.randint(BATTLE_REWARD_MIN, BATTLE_REWARD_MAX)
             self.update(winner_uid,
                         points=(winner.get("points") or 0) + reward,
                         total_earned=(winner.get("total_earned") or 0) + reward,
@@ -1235,22 +1719,30 @@ class UnicornGame:
             c.execute("INSERT INTO unicorn_battles (winner_id,loser_id,amount,at) VALUES (%s,%s,%s,%s)",
                       (winner_uid, loser_uid, reward, now_ts()))
             self.check_achievements(winner_uid); self.check_achievements(loser_uid)
+
             anim = " ".join(random.sample(BATTLE_ANIM, 3))
             cry = random.choice(BATTLE_WORDS)
+
+            wa = WEAPONS.get(pa["weapon_key"], ("?", "❓", 0, 0, 0))
+            wb = WEAPONS.get(pb["weapon_key"], ("?", "❓", 0, 0, 0))
+
             await self._safe_send(event.chat_id,
                 f"        {anim}\n"
-                f"    🥊 {PE('fire','🔥')} <b>نَـبـرد!</b> {PE('fire','🔥')} 🥊\n"
+                f"    🥊 {PE('fire','🔥')} <b>نَـبـرد اسـتـراتـژیـک!</b> {PE('fire','🔥')} 🥊\n"
                 f"        {anim}\n"
                 f"{DIV}\n"
                 f"🦄 <a href=\"tg://user?id={uid}\">{a_name}</a>  ⚔️  "
                 f"<a href=\"tg://user?id={target}\">{b_name}</a>\n"
                 f"{DIV2}\n"
-                f"⚡ {a_name}: <code>{a_pow}</code>\n"
-                f"⚡ {b_name}: <code>{b_pow}</code>\n"
+                f"⚡ <b>قدرت {a_name}:</b> <code>{fmt_full(int(pow_a))}</code>\n"
+                f"   {wa[1]} سلاح: <code>{wa[0]}</code> · 🛡️<code>{pa['soldier_count']}</code> · 👑<code>{pa['heroes_count']}</code>\n"
+                f"{DIV2}\n"
+                f"⚡ <b>قدرت {b_name}:</b> <code>{fmt_full(int(pow_b))}</code>\n"
+                f"   {wb[1]} سلاح: <code>{wb[0]}</code> · 🛡️<code>{pb['soldier_count']}</code> · 👑<code>{pb['heroes_count']}</code>\n"
                 f"{DIV2}\n"
                 f"<i>{cry}</i>\n"
                 f"{PE('crown','👑')} <b>{h(winner.get('name') or '—')}</b>\n"
-                f"{PE('gift','🎁')} <code>+{fmt_num(reward)}</code>",
+                f"{PE('gift','🎁')} <code>+{fmt_full(reward)}</code>",
                 parse_mode="html", reply_to=event.id)
         except Exception as e:
             logger.exception(f"battle: {e}")
@@ -1265,12 +1757,11 @@ class UnicornGame:
                 await self._safe_send(event.chat_id, f"{PE('cross','❌')} با خودت!",
                     parse_mode="html", reply_to=event.id); return
             try:
-                ts = await self.client.get_entity(target); tname = user_name(ts)
+                ent = await self.client.get_entity(target); tname = user_name(ent)
             except Exception: tname = str(target)
             self.get_or_create(target, tname)
             a = self.get_unicorn(uid); b = self.get_unicorn(target)
 
-            # 🚫 چک متاهل بودن هر دو
             if a.get("married_to") and a.get("married_to") != 0:
                 await self._safe_send(event.chat_id,
                     f"{PE('cross','❌')} <b>تو خودت متأهلی!</b>\n"
@@ -1522,7 +2013,6 @@ class UnicornGame:
             if not r:
                 await self._safe_answer(event, "بیبی پیدا نشد!", alert=True); return
             baby = dict(r)
-            # چک مالکیت
             u = self.get_unicorn(uid)
             if not u: return
             partner = u.get("married_to") or 0
@@ -1565,6 +2055,19 @@ class UnicornGame:
             babies = self.count_babies(uid)
             baby_income = self.babies_income_per_day(uid)
 
+            try:
+                p = self.compute_power(uid)
+                w_act = WEAPONS.get(p["weapon_key"], ("?",))[0]
+                battle_stats = (
+                    f"{DIV2}\n"
+                    f"⚔️ <b>آمار رزمی:</b>\n"
+                    f"   💪 قدرت کل: <code>{fmt_full(p['total'])}</code>\n"
+                    f"   {WEAPONS.get(p['weapon_key'], ('?','❓'))[1]} سلاح فعال: <code>{w_act}</code>\n"
+                    f"   🛡️ سرباز: <code>{p['soldier_count']}</code> · 👑 قهرمان: <code>{p['heroes_count']}</code>\n"
+                )
+            except Exception:
+                battle_stats = ""
+
             ach_lines = []
             for k, (emoji, name, desc) in ACHIEVEMENTS.items():
                 mark = "✅" if k in ach else "🔒"
@@ -1605,6 +2108,7 @@ class UnicornGame:
                 f"🥚 تخم: <code>{eggs}</code>  ·  🐣 بیبی: <code>{babies}</code>\n"
                 f"💰 درآمد بیبی‌ها: <code>{fmt_num(baby_income)}/روز</code>\n"
                 f"🏆 دستاورد: <code>{len(ach)}/{len(ACHIEVEMENTS)}</code>\n"
+                + battle_stats +
                 f"{DIV2}\n"
                 f"{PE('trophy','🏆')} <b>دستاوردها:</b>\n" + "\n".join(ach_lines) + "\n\n"
                 f"{PE('sparkle','✨')} <i>ادامه بده تا افسانه‌ای بشی!</i>"
@@ -1640,15 +2144,19 @@ class UnicornGame:
             f"  🍰 <code>غذا</code> — سیری (500)\n"
             f"  {PE('party','🎉')} <code>پاداش</code> · 🎰 <code>گردونه</code>\n"
             f"{DIV2}\n"
+            f"⚔️ <b>دوئل استراتژیک:</b>\n"
+            f"  🔫 <code>تنظیمات دوئل</code> — پنل رزمی\n"
+            f"  ⚔️ <code>دوئل</code> (ریپلای) — نبرد\n"
+            f"  🏆 جایزه: <code>50K-100K</code> پوینت\n"
+            f"  💡 فرمول: 👑 قهرمانان + (🛡️ سرباز × 💥 سلاح)\n"
+            f"{DIV2}\n"
             f"{PE('heart','💖')} <b>خانواده:</b>\n"
             f"  💍 <code>ازدواج</code> (ریپلای) — ازدواج\n"
             f"  🥚 <code>تخم</code> — گذاشتن تخم (مشترک)\n"
             f"  🐣 <code>بیبی هام</code> — دیدن بچه‌ها\n"
             f"  💔 <code>طلاق</code> (ریپلای) — جدا شدن\n"
             f"{DIV2}\n"
-            f"{PE('fire','🔥')} <b>اجتماعی:</b>\n"
-            f"  🥊 <code>دوئل</code> (ریپلای)\n"
-            f"  {PE('rocket','🚀')} <code>انتقال یونیکورن 100k</code>\n"
+            f"{PE('rocket','🚀')} <code>انتقال یونیکورن 100k</code>\n"
             f"{DIV2}\n"
             f"{PE('diamond','💎')} 🎨 <code>رنگ</code> · 🏆 <code>دستاورد</code> · 🏅 <code>لیدربورد</code>\n"
             f"{DIV2}\n"
@@ -1708,6 +2216,10 @@ class UnicornGame:
             parts = data.split(":")
             action = parts[1]
 
+            # ─── noop ───
+            if action == "noop":
+                await self._safe_answer(event); return
+
             # ─── طلاق تایید ───
             if action == "divorce_yes":
                 try:
@@ -1744,6 +2256,45 @@ class UnicornGame:
             if action == "babies":
                 await self._safe_answer(event)
                 await self._show_babies(event, uid, edit_msg=event.message_id); return
+
+            # ─── پنل دوئل استراتژیک ───
+            if action == "armory":
+                await self._safe_answer(event)
+                await self._show_battle_panel(event.chat_id, uid, edit_msg=event.message_id)
+                return
+            if action == "armory_weap":
+                await self._safe_answer(event)
+                await self._show_armory_weapons(event, uid); return
+            if action == "armory_hero":
+                await self._safe_answer(event)
+                await self._show_armory_heroes(event, uid); return
+            if action == "armory_army":
+                await self._safe_answer(event)
+                await self._show_armory_army(event, uid); return
+            if action == "armory_stats":
+                await self._safe_answer(event)
+                await self._show_armory_stats(event, uid); return
+
+            if action == "weapon_click":
+                key = parts[2] if len(parts) > 2 else ""
+                await self._safe_answer(event)
+                await self._weapon_click(event, uid, key); return
+
+            if action == "hero_click":
+                key = parts[2] if len(parts) > 2 else ""
+                await self._safe_answer(event)
+                await self._hero_click(event, uid, key); return
+
+            if action == "train":
+                try: cnt = int(parts[2])
+                except Exception: cnt = 1
+                ok, msg = self.train_soldiers(uid, cnt)
+                if ok:
+                    await self._safe_answer(event, f"✅ {msg}")
+                else:
+                    await self._safe_answer(event, f"❌ {msg}", alert=True)
+                await self._show_armory_army(event, uid)
+                return
 
             # ─── دکمه‌های عادی ───
             if action in ("feed", "withdraw", "daily", "spin", "skins", "ach",
@@ -1802,12 +2353,9 @@ class UnicornGame:
                 await self._show_profile(uid, event.chat_id, force_new=False); return
 
             if action == "battle":
-                await self._safe_answer(event, "🥊")
-                await self._safe_send(event.chat_id,
-                    f"🥊 {PE('fire','🔥')} <b>دوئل!</b>\n"
-                    f"{DIV}\n"
-                    f"روی پیام حریف <b>ریپلای</b> کن و بنویس <code>دوئل</code>",
-                    parse_mode="html"); return
+                await self._safe_answer(event, "⚔️")
+                await self._show_battle_panel(event.chat_id, uid, edit_msg=event.message_id)
+                return
 
             if action == "marry":
                 await self._safe_answer(event, "💍")
@@ -1866,7 +2414,6 @@ class UnicornGame:
             eggs = self.count_eggs(uid)
             babies = self.count_babies(uid)
 
-            # پاک کردن همه چیز
             self.update(uid, married_to=0, married_at=0)
             self.update(spouse_uid, married_to=0, married_at=0)
             self.delete_couple_eggs_and_babies(uid, spouse_uid)
@@ -2023,5 +2570,5 @@ def init_unicorn(client, db):
     _game.setup()
     _game.register_handlers()
     _game.start_ticker()
-    logger.info("🦄 Unicorn module initialized!")
+    logger.info("🦄 Unicorn module initialized (strategic battle v9)!")
     return _game
