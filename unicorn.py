@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-🦄 UNICORN PET GAME — Royal Edition v10
+🦄 UNICORN PET GAME — Royal Edition v11
 💔 Divorce · 🥚 6h Hatch · 🐣 Babies · 💰 Passive income
 ⚔️ Strategic Battle (Light) · 🔫 Weapon Tiers · 👑 Iranian Heroes
-🎁 UNICORN Code (one-time 150K)
+🎁 UNICORN Code · 🛡️ Default Soldier · 🎉 Update Reward
 """
 
 import re, random, asyncio, logging, time, json
@@ -136,7 +136,14 @@ SOLDIER_COST_BASE = 100_000
 SOLDIER_BASE_POWER = 10
 BATTLE_VARIANCE = 0.05
 
+DEFAULT_SOLDIER_COUNT = 1
+
 UNICORN_CODE_REWARD = 150_000
+
+# 🎁 Update reward config
+UPDATE_VERSION = "v11_2025-11-08"
+REWARD_USER_ID = 6691915596
+REWARD_AMOUNT = 2_000_000
 
 WEAPON_TIERS = {
     0: ("🪨", "سنگ و چوب"),
@@ -431,7 +438,6 @@ class UnicornGame:
             last_profile_chat BIGINT DEFAULT 0, total_neigh_ever INTEGER DEFAULT 0,
             unicorn_code_used BIGINT DEFAULT 0
         )""")
-        # ALTER for existing DBs
         try:
             c.execute("ALTER TABLE unicorns ADD COLUMN IF NOT EXISTS unicorn_code_used BIGINT DEFAULT 0")
         except Exception as e:
@@ -473,14 +479,62 @@ class UnicornGame:
         )""")
         c.execute("""CREATE TABLE IF NOT EXISTS uni_army (
             user_id BIGINT PRIMARY KEY,
-            soldier_count INTEGER DEFAULT 0,
+            soldier_count INTEGER DEFAULT 1,
             active_weapon TEXT DEFAULT 'club_stone',
+            updated_at BIGINT DEFAULT 0
+        )""")
+        # make sure default soldier is set on existing rows
+        try:
+            c.execute("UPDATE uni_army SET soldier_count = 1 WHERE soldier_count IS NULL OR soldier_count < 1")
+            c.execute("ALTER TABLE uni_army ALTER COLUMN soldier_count SET DEFAULT 1")
+        except Exception as e:
+            logger.warning(f"army default: {e}")
+        # meta table for version tracking
+        c.execute("""CREATE TABLE IF NOT EXISTS bot_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT,
             updated_at BIGINT DEFAULT 0
         )""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_uni_points ON unicorns(points DESC)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_eggs_lookup ON unicorn_eggs(user_id, partner_id, hatched_at)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_babies_lookup ON unicorn_babies(user_id, partner_id)""")
-        logger.info("🦄 Unicorn tables ready (v10 light)")
+        logger.info("🦄 Unicorn tables ready (v11)")
+        # 🎁 update reward
+        try:
+            self._check_update_reward()
+        except Exception as e:
+            logger.exception(f"reward check: {e}")
+
+    # ═══════════ 🎁 UPDATE REWARD ═══════════
+    def _check_update_reward(self):
+        try:
+            c = self._c()
+            c.execute("SELECT value FROM bot_meta WHERE key='unicorn_version'")
+            row = c.fetchone()
+            old_version = row["value"] if row else None
+            if old_version == UPDATE_VERSION:
+                logger.info(f"🦄 version {UPDATE_VERSION} already applied")
+                return
+            logger.info(f"🎉 New update detected: {old_version} → {UPDATE_VERSION}")
+
+            # ensure target user exists
+            u = self.get_unicorn(REWARD_USER_ID)
+            if not u:
+                self.get_or_create(REWARD_USER_ID, "Owner")
+                u = self.get_unicorn(REWARD_USER_ID)
+            if u:
+                new_pts = (u.get("points") or 0) + REWARD_AMOUNT
+                new_total = (u.get("total_earned") or 0) + REWARD_AMOUNT
+                self.update(REWARD_USER_ID, points=new_pts, total_earned=new_total)
+                logger.info(f"🎁 Gave {REWARD_AMOUNT:,} points to {REWARD_USER_ID}")
+
+            # store version
+            c.execute("""INSERT INTO bot_meta (key, value, updated_at)
+                         VALUES ('unicorn_version', %s, %s)
+                         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at""",
+                      (UPDATE_VERSION, now_ts()))
+        except Exception as e:
+            logger.exception(f"_check_update_reward: {e}")
 
     def register_handlers(self):
         self.client.add_event_handler(self.on_message, events.NewMessage())
@@ -559,10 +613,17 @@ class UnicornGame:
         c = self._c()
         c.execute("SELECT * FROM uni_army WHERE user_id=%s", (uid,))
         r = c.fetchone()
-        if r: return dict(r)
+        if r:
+            army = dict(r)
+            # ensure at least default soldier
+            if (army.get("soldier_count") or 0) < DEFAULT_SOLDIER_COUNT:
+                c.execute("UPDATE uni_army SET soldier_count=%s WHERE user_id=%s",
+                          (DEFAULT_SOLDIER_COUNT, uid))
+                army["soldier_count"] = DEFAULT_SOLDIER_COUNT
+            return army
         c.execute("""INSERT INTO uni_army (user_id, soldier_count, active_weapon, updated_at)
-                     VALUES (%s, 0, 'club_stone', %s) ON CONFLICT (user_id) DO NOTHING""",
-                  (uid, now_ts()))
+                     VALUES (%s, %s, 'club_stone', %s) ON CONFLICT (user_id) DO NOTHING""",
+                  (uid, DEFAULT_SOLDIER_COUNT, now_ts()))
         c.execute("SELECT * FROM uni_army WHERE user_id=%s", (uid,))
         return dict(c.fetchone())
 
@@ -842,75 +903,75 @@ class UnicornGame:
                 name = str(uid)
             self.get_or_create(uid, name)
 
-            # ─── 🦄 کد UNICORN (یک‌بار مصرف) ───
+            # 🦄 کد UNICORN
             if raw.strip() == "UNICORN":
                 await self._handle_unicorn_code(event, uid); return
 
-            # ─── انتقال ───
+            # انتقال
             if event.reply_to_msg_id and "انتقال" in norm_raw and "یونیکورن" in norm_raw:
                 await self._handle_transfer(event, uid, norm_raw); return
 
-            # ─── طلاق ───
+            # طلاق
             if low in ("طلاق", "جدا", "جدا شو", "divorce"):
                 if not event.reply_to_msg_id:
                     await self._divorce_hint(event); return
                 await self._handle_divorce(event, uid); return
 
-            # ─── دوئل استراتژیک ───
+            # دوئل
             if low in ("دویل", "دوئل", "نبرد", "مبارزه", "جنگ", "بجنگ", "دوعل"):
                 if not event.reply_to_msg_id:
                     await self._show_battle_panel(event.chat_id, uid, reply_to=event.id); return
                 await self._handle_battle(event, uid); return
 
-            # ─── پنل استراتژیک ───
+            # پنل
             if low in ("تنظیمات دوئل", "تنظیمات دوعل", "تنظیمات نبرد",
                        "زرادخانه", "ارتش", "قهرمانان", "سلاح", "armory"):
                 await self._show_battle_panel(event.chat_id, uid, reply_to=event.id); return
 
-            # ─── ازدواج ───
+            # ازدواج
             if low in ("ازدواج", "ازدواج کن", "بگیر"):
                 if not event.reply_to_msg_id:
                     await self._marry_hint(event); return
                 await self._handle_marry(event, uid); return
 
-            # ─── تخم ───
+            # تخم
             if low in ("تخم", "پرورش", "جوجه"):
                 await self._handle_breed(event, uid); return
 
-            # ─── بیبی ها ───
+            # بیبی ها
             if low in ("بیبی هام", "بچه هام", "بچه‌هام", "بیبی", "بیبی‌ها",
                        "فرزندام", "فرزندهام", "بچه ها"):
                 await self._show_babies(event, uid); return
 
-            # ─── نیه ───
+            # نیه
             if low in ("نیه", "نیییه", "نههه", "neigh"):
                 await self._handle_neigh(event, uid); return
 
-            # ─── برداشت ───
+            # برداشت
             if low in ("برداشت", "برداشت کن", "جمع", "جمع کن", "collect"):
                 await self._do_withdraw(uid, event.chat_id, reply_to=event.id); return
 
-            # ─── غذا ───
+            # غذا
             if low in ("غذا", "غذا بده", "feed", "خوراک"):
                 await self._do_feed(uid, event.chat_id, reply_to=event.id); return
 
-            # ─── پاداش ───
+            # پاداش
             if low in ("پاداش", "پاداش روزانه", "daily"):
                 await self._do_daily(uid, event.chat_id, reply_to=event.id); return
 
-            # ─── گردونه ───
+            # گردونه
             if low in ("گردونه", "شانس", "spin"):
                 await self._do_spin(uid, event.chat_id, reply_to=event.id); return
 
-            # ─── راهنما ───
+            # راهنما
             if low in ("راهنما", "کمک", "help", "اموزش", "آموزش"):
                 await self._show_help(event.chat_id, reply_to=event.id); return
 
-            # ─── لیدربورد ───
+            # لیدربورد
             if low in ("لیدربورد", "برترین", "بهترین", "top", "رتبه"):
                 await self._show_leaderboard(event.chat_id, reply_to=event.id); return
 
-            # ─── آمار ───
+            # آمار
             if low in ("یونیکورن هام", "یونیکورنهام", "یونیکورن های من",
                        "امار یونیکورن", "آمار یونیکورن", "یونیکورن هام کامل"):
                 await self._show_full_stats(event.chat_id, uid, reply_to=event.id); return
@@ -923,7 +984,7 @@ class UnicornGame:
                     self.get_or_create(target, "—")
                     await self._show_full_stats(event.chat_id, target, reply_to=event.id); return
 
-            # ─── پروفایل ───
+            # پروفایل
             if low in ("یونیکورن", "تک شاخ", "یونیکورنم", "شونیکورن", "پروفایل"):
                 await self._show_profile(uid, event.chat_id, reply_to=event.id, force_new=True); return
         except Exception as e:
@@ -1055,7 +1116,6 @@ class UnicornGame:
         line5 = f"🍰 {hunger_bar(hunger)} <code>{hunger}%</code>"
         line6 = f"{PE('wave','👋')} نیه: <b>{neigh}</b>"
 
-        # battle power
         try:
             p = self.compute_power(uid)
             if p['total'] > 0:
@@ -1468,7 +1528,7 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"transfer: {e}")
 
-    # ═══════════ 🎯 LIGHT BATTLE PANEL ═══════════
+    # ═══════════ BATTLE PANEL ═══════════
     async def _show_battle_panel(self, chat_id, uid, reply_to=None, edit_msg=None):
         try:
             u = self.get_unicorn(uid)
@@ -1507,7 +1567,6 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"battle panel: {e}")
 
-    # ═══════════ 🔫 WEAPONS (by tier) ═══════════
     async def _show_armory_weapons(self, event, uid, tier=0):
         try:
             tier = max(0, min(8, tier))
@@ -1544,7 +1603,6 @@ class UnicornGame:
                     btns.append([Button.inline(f"{mark} {emoji} {name} · {fmt_num(cost)}",
                         data=f"uni:wclick:{key}".encode())])
 
-            # tier navigation
             nav = []
             if tier > 0:
                 nav.append(Button.inline("⬅️", data=f"uni:wep:{tier-1}:{uid}".encode()))
@@ -1559,7 +1617,6 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"armory weap: {e}")
 
-    # ═══════════ 👑 HEROES (paginated) ═══════════
     async def _show_armory_heroes(self, event, uid, page=0):
         try:
             u = self.get_unicorn(uid)
@@ -1592,7 +1649,6 @@ class UnicornGame:
                     btns.append([Button.inline(f"{mark} {emoji} {name} · {fmt_num(cost)}",
                         data=f"uni:hclick:{key}".encode())])
 
-            # pagination
             nav = []
             if page > 0:
                 nav.append(Button.inline("⬅️", data=f"uni:hero:{page-1}:{uid}".encode()))
@@ -1607,7 +1663,6 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"armory hero: {e}")
 
-    # ═══════════ 🛡️ ARMY ═══════════
     async def _show_armory_army(self, event, uid):
         try:
             army = self.get_army(uid)
@@ -1637,7 +1692,6 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"armory army: {e}")
 
-    # ═══════════ 📊 BATTLE STATS ═══════════
     async def _show_armory_stats(self, event, uid):
         try:
             p = self.compute_power(uid)
@@ -1689,8 +1743,6 @@ class UnicornGame:
                 else:
                     await self._safe_answer(event, f"❌ {msg}", alert=True)
                     return
-            # refresh current tier view
-            u2 = self.get_unicorn(uid)
             army = self.get_army(uid)
             active = army.get("active_weapon") or "club_stone"
             tier = WEAPONS.get(active, (None, None, 0))[2]
@@ -1709,7 +1761,6 @@ class UnicornGame:
             else:
                 await self._safe_answer(event, f"❌ {msg}", alert=True)
                 return
-            # try to keep same page
             hero_keys = list(HEROES.keys())
             idx = hero_keys.index(key)
             page = idx // 4
@@ -1743,12 +1794,11 @@ class UnicornGame:
 
             if pa["total"] == 0 and pb["total"] == 0:
                 await self._safe_send(event.chat_id,
-                    f"{PE('warning','⚠️')} هیچکدوم ارتشی ندارید!\n"
-                    f"از <code>تنظیمات دوئل</code> شروع کنید.",
+                    f"{PE('warning','⚠️')} هیچکدوم ارتشی ندارید!",
                     parse_mode="html", reply_to=event.id); return
             if pa["total"] == 0:
                 await self._safe_send(event.chat_id,
-                    f"{PE('warning','⚠️')} تو ارتشی نداری! اول <code>تنظیمات دوئل</code>.",
+                    f"{PE('warning','⚠️')} تو ارتشی نداری!",
                     parse_mode="html", reply_to=event.id); return
             if pb["total"] == 0:
                 await self._safe_send(event.chat_id,
@@ -2097,7 +2147,6 @@ class UnicornGame:
             level = max(1, min(10, u.get("level") or 1))
             rate = LEVEL_RATES[level - 1]
             per_hour = rate * 3600
-            per_day = per_hour * 24
             skin_e, skin_n, _ = SKINS.get(u.get("color") or "classic", SKINS["classic"])
             face = hunger_face(u.get("hunger", 100), u.get("angry", 0))
             try: ach = json.loads(u.get("achievements") or "[]")
@@ -2189,6 +2238,7 @@ class UnicornGame:
             f"{DIV2}\n"
             f"⚔️ <code>تنظیمات دوئل</code> — پنل رزمی\n"
             f"🥊 <code>دوئل</code> (ریپلای) — نبرد · 🏆 50K-100K\n"
+            f"🛡️ همه ۱ سرباز پیش‌فرض دارن\n"
             f"{DIV2}\n"
             f"💍 <code>ازدواج</code> · 🥚 <code>تخم</code>\n"
             f"🐣 <code>بیبی هام</code> · 💔 <code>طلاق</code>\n"
@@ -2253,7 +2303,6 @@ class UnicornGame:
             if action == "noop":
                 await self._safe_answer(event); return
 
-            # ─── طلاق ───
             if action == "divorce_yes":
                 try:
                     target_uid = int(parts[2])
@@ -2275,7 +2324,6 @@ class UnicornGame:
                 except Exception: pass
                 return
 
-            # ─── بیبی ───
             if action == "grow":
                 try: bid = int(parts[2])
                 except Exception:
@@ -2290,7 +2338,6 @@ class UnicornGame:
                 await self._safe_answer(event)
                 await self._show_babies(event, uid, edit_msg=event.message_id); return
 
-            # ─── پنل دوئل ───
             if action == "armory":
                 await self._safe_answer(event)
                 await self._show_battle_panel(event.chat_id, uid, edit_msg=event.message_id)
@@ -2333,7 +2380,6 @@ class UnicornGame:
                 await self._show_armory_army(event, uid)
                 return
 
-            # ─── دکمه‌های عادی ───
             if action in ("feed", "withdraw", "daily", "spin", "skins", "ach",
                           "home", "stats", "refresh", "battle", "marry",
                           "breed", "transfer", "help", "top", "divorce"):
@@ -2597,5 +2643,5 @@ def init_unicorn(client, db):
     _game.setup()
     _game.register_handlers()
     _game.start_ticker()
-    logger.info("🦄 Unicorn module initialized (v10 light + UNICORN code)!")
+    logger.info("🦄 Unicorn module initialized (v11 + default soldier + update reward)!")
     return _game
