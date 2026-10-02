@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-🦄 UNICORN PET GAME — Royal Edition v11
+🦄 UNICORN PET GAME — Royal Edition v12
 💔 Divorce · 🥚 6h Hatch · 🐣 Babies · 💰 Passive income
 ⚔️ Strategic Battle (Light) · 🔫 Weapon Tiers · 👑 Iranian Heroes
 🎁 UNICORN Code · 🛡️ Default Soldier · 🎉 Update Reward
+✏️ v12 NEW: Rename babies!
 """
 
 import re, random, asyncio, logging, time, json
@@ -29,6 +30,11 @@ EGG_COST = 5000
 BABY_GROW_COST_BASE = 10000
 BABY_MAX_LEVEL = 5
 BABY_INCOME_PER_LEVEL_PER_DAY = 500
+
+# ✏️ NEW: Rename config
+BABY_NAME_MIN_LEN = 1
+BABY_NAME_MAX_LEN = 30
+BABY_RENAME_COST = 0   # ← هرچی می‌خوای، الان رایگانه
 
 COMBO_WINDOW_SEC = 30
 COMBO_BONUS_MULT = 2.0
@@ -98,6 +104,12 @@ BABY_NAMES = [
     "🍀 لاکی", "💖 هارت", "🎵 ملی", "🌊 آبی", "🍯 هانی",
 ]
 
+# ✏️ NEW: presets for quick rename
+BABY_NAME_PRESETS = [
+    "🌈 استار", "✨ لونا", "💫 نوا", "🌸 پیچ", "🦄 دریم",
+    "⭐ گالاکس", "🌟 سلست", "💎 کریستال", "🔥 فینیکس", "🌙 سلن",
+]
+
 ACHIEVEMENTS = {
     "first_neigh": ("🎉", "اولین نیه", "برای اولین بار نیه زدی"),
     "neigh_50": ("👋", "۵۰ نیه", "۵۰ بار نیه زدی"),
@@ -141,7 +153,7 @@ DEFAULT_SOLDIER_COUNT = 1
 UNICORN_CODE_REWARD = 150_000
 
 # 🎁 Update reward config
-UPDATE_VERSION = "v11_2025-11-08"
+UPDATE_VERSION = "v12_2025-11-08"
 REWARD_USER_ID = 6691915596
 REWARD_AMOUNT = 2_000_000
 
@@ -347,6 +359,25 @@ def roll_neigh_event():
     return None
 
 
+# ✏️ NEW: Validate new baby name
+def _clean_baby_name(raw_name):
+    """Return sanitized name or None if invalid."""
+    if not raw_name:
+        return None
+    n = raw_name.strip()
+    # reject commands / empty
+    if not n:
+        return None
+    # length check
+    if len(n) < BABY_NAME_MIN_LEN or len(n) > BABY_NAME_MAX_LEN:
+        return None
+    # strip newlines
+    n = n.replace("\n", " ").replace("\r", " ").strip()
+    # collapse spaces
+    n = re.sub(r"\s+", " ", n)
+    return n
+
+
 # ═══════════════════════════════════════════════════════════
 # GAME
 # ═══════════════════════════════════════════════════════════
@@ -358,6 +389,9 @@ class UnicornGame:
         self._running = False
         self._combo = {}
         self._last_breed_cache = {}
+        # ✏️ NEW: pending rename state
+        # {user_id: {"baby_id": int, "chat_id": int, "msg_id": int}}
+        self._pending_renames = {}
 
     def _c(self):
         import psycopg2, psycopg2.extras
@@ -483,13 +517,11 @@ class UnicornGame:
             active_weapon TEXT DEFAULT 'club_stone',
             updated_at BIGINT DEFAULT 0
         )""")
-        # make sure default soldier is set on existing rows
         try:
             c.execute("UPDATE uni_army SET soldier_count = 1 WHERE soldier_count IS NULL OR soldier_count < 1")
             c.execute("ALTER TABLE uni_army ALTER COLUMN soldier_count SET DEFAULT 1")
         except Exception as e:
             logger.warning(f"army default: {e}")
-        # meta table for version tracking
         c.execute("""CREATE TABLE IF NOT EXISTS bot_meta (
             key TEXT PRIMARY KEY,
             value TEXT,
@@ -498,8 +530,7 @@ class UnicornGame:
         c.execute("""CREATE INDEX IF NOT EXISTS idx_uni_points ON unicorns(points DESC)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_eggs_lookup ON unicorn_eggs(user_id, partner_id, hatched_at)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_babies_lookup ON unicorn_babies(user_id, partner_id)""")
-        logger.info("🦄 Unicorn tables ready (v11)")
-        # 🎁 update reward
+        logger.info("🦄 Unicorn tables ready (v12 — rename babies)")
         try:
             self._check_update_reward()
         except Exception as e:
@@ -517,7 +548,6 @@ class UnicornGame:
                 return
             logger.info(f"🎉 New update detected: {old_version} → {UPDATE_VERSION}")
 
-            # ensure target user exists
             u = self.get_unicorn(REWARD_USER_ID)
             if not u:
                 self.get_or_create(REWARD_USER_ID, "Owner")
@@ -528,7 +558,6 @@ class UnicornGame:
                 self.update(REWARD_USER_ID, points=new_pts, total_earned=new_total)
                 logger.info(f"🎁 Gave {REWARD_AMOUNT:,} points to {REWARD_USER_ID}")
 
-            # store version
             c.execute("""INSERT INTO bot_meta (key, value, updated_at)
                          VALUES ('unicorn_version', %s, %s)
                          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at""",
@@ -615,7 +644,6 @@ class UnicornGame:
         r = c.fetchone()
         if r:
             army = dict(r)
-            # ensure at least default soldier
             if (army.get("soldier_count") or 0) < DEFAULT_SOLDIER_COUNT:
                 c.execute("UPDATE uni_army SET soldier_count=%s WHERE user_id=%s",
                           (DEFAULT_SOLDIER_COUNT, uid))
@@ -781,6 +809,37 @@ class UnicornGame:
                OR (user_id=%s AND partner_id=%s)""",
             (uid1, uid2, uid2, uid1))
 
+    # ✏️ NEW: rename a baby (ownership-checked)
+    def rename_baby(self, uid, baby_id, new_name):
+        c = self._c()
+        c.execute("SELECT * FROM unicorn_babies WHERE id=%s", (baby_id,))
+        r = c.fetchone()
+        if not r:
+            return False, "بیبی پیدا نشد"
+        baby = dict(r)
+        u = self.get_unicorn(uid)
+        if not u:
+            return False, "یونیکورن نداری"
+        partner = u.get("married_to") or 0
+        # ownership check
+        owns = (baby["user_id"] == uid or baby["partner_id"] == uid or
+                (partner and (baby["user_id"] == partner or baby["partner_id"] == partner)))
+        if not owns:
+            return False, "مال تو نیست"
+        # length / content check
+        clean = _clean_baby_name(new_name)
+        if not clean:
+            return False, f"اسم باید بین {BABY_NAME_MIN_LEN} تا {BABY_NAME_MAX_LEN} حرف باشه"
+        # cost check (if BABY_RENAME_COST > 0)
+        if BABY_RENAME_COST > 0:
+            if (u.get("points") or 0) < BABY_RENAME_COST:
+                return False, f"{fmt_num(BABY_RENAME_COST)} پوینت لازمه"
+            self.update(uid, points=(u.get("points") or 0) - BABY_RENAME_COST)
+        # update
+        c2 = self._c()
+        c2.execute("UPDATE unicorn_babies SET name=%s WHERE id=%s", (clean, baby_id))
+        return True, clean
+
     # ═══════════ TICKER ═══════════
     async def _ticker(self):
         await asyncio.sleep(8)
@@ -895,6 +954,44 @@ class UnicornGame:
             uid = event.sender_id
             low = normalize_fa(raw.lower().strip())
             norm_raw = normalize_fa(raw)
+
+            # ✏️ NEW: pending rename — catch the next message from this user
+            if uid in self._pending_renames:
+                pending = self._pending_renames.get(uid)
+                # cancel commands
+                if low in ("لغو", "کنسل", "cancel", "بیخیال", "❌", "بازگشت", "back"):
+                    self._pending_renames.pop(uid, None)
+                    await self._safe_send(event.chat_id,
+                        f"{PE('cross','❌')} <b>تغییر اسم لغو شد.</b>",
+                        parse_mode="html", reply_to=event.id)
+                    return
+                # try to apply
+                baby_id = pending.get("baby_id")
+                ok, result = self.rename_baby(uid, baby_id, raw)
+                self._pending_renames.pop(uid, None)
+                if ok:
+                    new_name = result
+                    await self._safe_send(event.chat_id,
+                        f"        ✏️ {PE('sparkle','✨')} ✏️\n"
+                        f"    {PE('party','🎉')} <b>اسم عوض شد!</b> {PE('party','🎉')}\n"
+                        f"{DIV}\n"
+                        f"📛 اسم جدید: <b>{h(new_name)}</b>\n"
+                        f"{PE('heart','💖')} <i>حالا این اسمشه!</i>",
+                        parse_mode="html", reply_to=event.id)
+                    # refresh babies view
+                    fake = type("E", (), {"chat_id": event.chat_id,
+                                          "id": pending.get("msg_id"),
+                                          "message_id": pending.get("msg_id"),
+                                          "reply_to_msg_id": None})()
+                    try:
+                        await self._show_babies(fake, uid, edit_msg=pending.get("msg_id"))
+                    except Exception: pass
+                else:
+                    await self._safe_send(event.chat_id,
+                        f"{PE('warning','⚠️')} <b>نشد!</b>\n"
+                        f"{PE('info','ℹ️')} {result}",
+                        parse_mode="html", reply_to=event.id)
+                return
 
             try:
                 s = await event.get_sender()
@@ -2021,7 +2118,7 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"breed: {e}")
 
-    # ═══════════ BABIES UI ═══════════
+    # ═══════════ BABIES UI (✏️ NEW: rename buttons) ═══════════
     async def _show_babies(self, event, uid, edit_msg=None):
         try:
             u = self.get_unicorn(uid)
@@ -2053,13 +2150,20 @@ class UnicornGame:
                     income = self.babies_income_per_day(uid)
                     lines.append(f"🐣 <b>بیبی‌ها ({len(babies)}):</b>")
                     lines.append(f"💎 درآمد: <code>{fmt_num(income)}/روز</code>")
+                    lines.append(f"{PE('info','ℹ️')} <i>برای تغییر اسم، روی دکمه ✏️ بزن</i>")
                     lines.append("")
-                    for b in babies[:10]:
+                    for b in babies[:8]:
                         lvl = b.get("level", 1)
                         stars = "⭐" * lvl
-                        lines.append(f"   {b['name']}  {stars}")
+                        lines.append(f"   📛 <b>{h(b['name'])}</b>  {stars}  Lv{lvl}")
 
             btns = []
+            # ✏️ NEW: rename buttons — one row per baby
+            if babies:
+                for b in babies[:8]:
+                    btns.append([Button.inline(
+                        f"✏️ تغییر اسم: {b['name'][:18]}",
+                        data=f"uni:rename:{b['id']}".encode())])
             if babies:
                 btns.append([Button.inline("🐣 رشد", data=f"uni:grow_menu:{uid}".encode())])
             btns.append([Button.inline("🔙 بازگشت", data=f"uni:back:{uid}".encode())])
@@ -2072,6 +2176,74 @@ class UnicornGame:
                 await self._safe_send(event.chat_id, text, **kwargs)
         except Exception as e:
             logger.exception(f"babies: {e}")
+
+    # ✏️ NEW: Rename prompt
+    async def _start_rename(self, event, uid, baby_id):
+        try:
+            c = self._c()
+            c.execute("SELECT * FROM unicorn_babies WHERE id=%s", (baby_id,))
+            r = c.fetchone()
+            if not r:
+                await self._safe_answer(event, "بیبی پیدا نشد!", alert=True); return
+            baby = dict(r)
+            u = self.get_unicorn(uid)
+            if not u:
+                await self._safe_answer(event, "یونیکورت پیدا نشد!", alert=True); return
+            partner = u.get("married_to") or 0
+            owns = (baby["user_id"] == uid or baby["partner_id"] == uid or
+                    (partner and (baby["user_id"] == partner or baby["partner_id"] == partner)))
+            if not owns:
+                await self._safe_answer(event, "⛔ مال تو نیست!", alert=True); return
+
+            # save state
+            self._pending_renames[uid] = {
+                "baby_id": baby_id,
+                "chat_id": event.chat_id,
+                "msg_id": event.message_id,
+            }
+            await self._safe_answer(event, "✏️ اسم جدید رو بفرست")
+
+            old_name = h(baby.get("name") or "—")
+            # show quick presets + cancel
+            rows = []
+            for i in range(0, len(BABY_NAME_PRESETS), 2):
+                pair = BABY_NAME_PRESETS[i:i+2]
+                rows.append([Button.inline(p, data=f"uni:setname:{baby_id}:{i+j}".encode())
+                             for j, p in enumerate(pair)])
+            rows.append([Button.inline("❌ لغو", data=f"uni:cancelrename:{baby_id}".encode())])
+
+            text = (
+                f"✏️ {PE('sparkle','✨')} <b>تغییر اسم بیبی</b> {PE('sparkle','✨')}\n"
+                f"{DIV}\n\n"
+                f"📛 اسم فعلی: <b>{old_name}</b>\n\n"
+                f"{PE('info','ℹ️')} یه اسم جدید (بین {BABY_NAME_MIN_LEN} تا {BABY_NAME_MAX_LEN} حرف) بفرست.\n"
+                f"{PE('heart','💖')} <i>یا از پیشنهاد‌های زیر انتخاب کن:</i>"
+            )
+            try:
+                await self._safe_send(event.chat_id, text, buttons=rows,
+                                      parse_mode="html", reply_to=event.message_id)
+            except Exception:
+                pass
+        except Exception as e:
+            logger.exception(f"start rename: {e}")
+            await self._safe_answer(event, "خطا!", alert=True)
+
+    async def _apply_rename_from_preset(self, event, uid, baby_id, preset_name):
+        try:
+            ok, result = self.rename_baby(uid, baby_id, preset_name)
+            if ok:
+                await self._safe_answer(event, f"✅ اسم شد: {result}")
+            else:
+                await self._safe_answer(event, f"❌ {result}", alert=True); return
+            self._pending_renames.pop(uid, None)
+            fake = type("E", (), {"chat_id": event.chat_id,
+                                  "id": event.message_id,
+                                  "message_id": event.message_id,
+                                  "reply_to_msg_id": None})()
+            await self._show_babies(fake, uid, edit_msg=event.message_id)
+        except Exception as e:
+            logger.exception(f"apply preset rename: {e}")
+            await self._safe_answer(event, "خطا!", alert=True)
 
     async def _show_grow_menu(self, event, uid):
         try:
@@ -2242,6 +2414,7 @@ class UnicornGame:
             f"{DIV2}\n"
             f"💍 <code>ازدواج</code> · 🥚 <code>تخم</code>\n"
             f"🐣 <code>بیبی هام</code> · 💔 <code>طلاق</code>\n"
+            f"✏️ <b>تغییر اسم بیبی:</b> از پنل بیبی‌ها، دکمه ✏️ رو بزن\n"
             f"{DIV2}\n"
             f"🦄 کد <code>UNICORN</code> — ۱۵۰K (یک‌بار!)\n"
             f"{DIV2}\n"
@@ -2302,6 +2475,31 @@ class UnicornGame:
 
             if action == "noop":
                 await self._safe_answer(event); return
+
+            # ✏️ NEW: rename handlers
+            if action == "rename":
+                try: baby_id = int(parts[2])
+                except Exception:
+                    await self._safe_answer(event, "خطا", alert=True); return
+                await self._start_rename(event, uid, baby_id); return
+
+            if action == "setname":
+                try:
+                    baby_id = int(parts[2])
+                    preset_idx = int(parts[3])
+                    preset = BABY_NAME_PRESETS[preset_idx]
+                except Exception:
+                    await self._safe_answer(event, "خطا", alert=True); return
+                await self._apply_rename_from_preset(event, uid, baby_id, preset); return
+
+            if action == "cancelrename":
+                self._pending_renames.pop(uid, None)
+                await self._safe_answer(event, "❌ لغو شد")
+                try:
+                    await event.edit("❌ <b>تغییر اسم لغو شد.</b>",
+                                     parse_mode="html", buttons=None)
+                except Exception: pass
+                return
 
             if action == "divorce_yes":
                 try:
@@ -2643,5 +2841,5 @@ def init_unicorn(client, db):
     _game.setup()
     _game.register_handlers()
     _game.start_ticker()
-    logger.info("🦄 Unicorn module initialized (v11 + default soldier + update reward)!")
+    logger.info("🦄 Unicorn module initialized (v12 — rename babies)!")
     return _game
