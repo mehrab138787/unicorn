@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-🎭 TRUTH OR DARE — UNICORN EDITION v3.2
-+ 🛑 Stop button in EVERY message
-+ 🖐 Join button in EVERY message (instant, no approval)
-+ ▶️ Restart after stop
-+ 🔧 FIX: safe_edit_msg falls back to strip_premium on DocumentInvalidError
+🎭 TRUTH OR DARE — UNICORN EDITION v4
+🔧 FIX: No premium emojis → no DocumentInvalidError
 """
 
 import re, random, asyncio, logging
@@ -16,34 +13,10 @@ from telethon.errors import MessageNotModifiedError, FloodWaitError
 logger = logging.getLogger("TD")
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 
-PREM = {
-    "laugh": "5368324170671202286", "joy": "5780769611324455942",
-    "heart": "5443038326535759644", "party": "5456359790390093750",
-    "sparkle": "5404654051945521778", "star": "6337048821603763745",
-    "check": "5206607081334906820", "cross": "5210952531676504517",
-    "user": "5443038326535759644", "id": "5397782960512444700",
-    "tag": "5436113877181941026", "crown": "5458603043203327669",
-    "group": "5447410659077661506", "pin": "5397782960512444700",
-    "time": "5458603043203327669", "info": "5323442290708985472",
-    "warning": "5447644880824181073", "alert": "5447644880824181073",
-    "shield": "5397782960512444700", "list": "5447410659077661506",
-    "stats": "5231200819986047254", "message": "5443038326535759644",
-    "link": "5271604874419647061", "rocket": "5424972470023104089",
-    "fire": "5424972470023104089", "trophy": "5458603043203327669",
-    "magic": "5404654051945521778", "diamond": "5404654051945521778",
-    "lock": "5397782960512444700", "wave": "5368324170671202286",
-    "point": "5436113877181941026", "hourglass": "5458603043203327669",
-    "gift": "5456359790390093750", "chart": "5231200819986047254",
-    "flag": "5447644880824181073", "target": "5424972470023104089",
-    "brain": "5404654051945521778", "gamepad": "5424972470023104089",
-    "bolt": "5424972470023104089", "gem": "5404654051945521778",
-    "medal": "5458603043203327669", "skip": "5424972470023104089",
-}
 
-
+# 🔥 FIX: plain emojis only — never returns <tg-emoji>
 def E(k, fb):
-    eid = PREM.get(k)
-    return f'<tg-emoji emoji-id="{eid}">{fb}</tg-emoji>' if eid else fb
+    return fb
 
 
 DIV = "━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -113,8 +86,7 @@ async def safe_send(peer, text, **kw):
     except Exception as ex:
         if _emoji_err(ex):
             try: return await _client.send_message(peer, strip_premium(text), **kw)
-            except Exception as ex2:
-                logger.error(f"safe_send fail: {ex2}"); raise
+            except Exception: raise
         raise
 
 
@@ -128,9 +100,6 @@ async def safe_edit(event, text, **kw):
         raise
 
 
-# ═══════════════════════════════════════════════════════════
-# 🔧 FIXED: safe_edit_msg with premium-emoji fallback
-# ═══════════════════════════════════════════════════════════
 async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=2):
     for attempt in range(max_retry):
         try:
@@ -141,14 +110,11 @@ async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=2):
             return True
         except FloodWaitError as fwe:
             wait = fwe.seconds
-            logger.warning(f"🚦 flood {wait}s (try {attempt+1})")
             if wait > 10: return False
             await asyncio.sleep(wait + 1)
         except Exception as e:
             err_s = str(e).lower()
-            # 🔥 FIX: premium emoji invalid → retry WITHOUT premium
             if "document" in err_s or ("invalid" in err_s and "inline" in err_s):
-                logger.info(f"🔁 stripping premium emojis for edit (msg {msg_id})")
                 try:
                     await _client.edit_message(chat_id, msg_id,
                                                 text=strip_premium(text),
@@ -156,12 +122,10 @@ async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=2):
                     return True
                 except MessageNotModifiedError:
                     return True
-                except Exception as e2:
-                    logger.warning(f"edit plain also failed: {str(e2)[:80]}")
+                except Exception:
                     return False
             if "message to edit not found" in err_s:
                 return False
-            logger.warning(f"edit try{attempt+1}: {type(e).__name__}: {str(e)[:80]}")
             await asyncio.sleep(0.5)
     return False
 
@@ -184,6 +148,9 @@ def _ctrl_row():
     ]
 
 
+# ═══════════════════════════════════════════════════════════
+# 🎭 TD_BANK
+# ═══════════════════════════════════════════════════════════
 TD_BANK = {
     "truth": [
         "آخرین باری که از ته دل گریه کردی کی بود و چرا؟",
@@ -1150,7 +1117,7 @@ def get_td_from_bank(kind, used_texts=None):
 
 def decorate_td_text(kind, text):
     a_k, a_f, b_k, b_f = TD_DECOR.get(kind, ("sparkle", "✨", "gem", "💎"))
-    return f"{E(a_k, a_f)}  {text}  {E(b_k, b_f)}"
+    return f"{a_f}  {text}  {b_f}"
 
 
 def create_td_setup(aid, gid):
@@ -1187,29 +1154,29 @@ def _find_td_game(event):
 
 
 def render_td_welcome(g):
-    return (f"{E('magic','🎭')} <b>جرعت یا حقیقت — UNICORN v3.2</b> {E('magic','🎭')}\n{DIV}\n\n"
-            f"{E('sparkle','✨')} <b>سلام ادمین عزیز!</b> {E('wave','👋')}\n\n"
-            f"{E('info','ℹ️')} <b>قابلیت‌ها:</b>\n"
+    return (f"🎭 <b>جرعت یا حقیقت — UNICORN v4</b> 🎭\n{DIV}\n\n"
+            f"✨ <b>سلام ادمین عزیز!</b> 👋\n\n"
+            f"ℹ️ <b>قابلیت‌ها:</b>\n"
             f"  🖐 دکمه شرکت در همه‌ی پیام‌ها\n"
             f"  🛑 دکمه توقف در همه‌ی پیام‌ها\n"
             f"  ⚡ پیوستن فوری (بدون نیاز به تایید)\n"
             f"  ▶️ شروع مجدد بعد از توقف\n\n"
-            f"{E('magic','✨')} <i>آماده‌ای؟</i>",
+            f"✨ <i>آماده‌ای؟</i>",
             [[Button.inline("🚀 شروع تنظیمات", data=b"td_setup")],
              [Button.inline("❌ لغو", data=b"td_cancel")]])
 
 
 def render_td_categories(g):
     sel = g["categories"]
-    text = (f"{E('target','🎯')} <b>مرحله ۱ از ۳ — دسته‌ها</b>\n{DIV}\n\n"
-            f"{E('info','ℹ️')} کدوم‌ها فعال باشن؟\n"
-            f"{E('alert','⚠️')} <i>برای 18+ باید همه بزرگسال باشن</i>\n\n"
-            f"{E('list','📋')} <b>انتخاب شده ({len(sel)}):</b>\n")
+    text = (f"🎯 <b>مرحله ۱ از ۳ — دسته‌ها</b>\n{DIV}\n\n"
+            f"ℹ️ کدوم‌ها فعال باشن؟\n"
+            f"⚠️ <i>برای 18+ باید همه بزرگسال باشن</i>\n\n"
+            f"📋 <b>انتخاب شده ({len(sel)}):</b>\n")
     if sel:
         for c in sel:
             name = next((n for k, e, n in TD_CATEGORIES_ALL if k == c), c)
-            text += f"  {E('check','✅')} <b>{name}</b>\n"
-    else: text += f"  {E('cross','➖')} <i>هیچی</i>\n"
+            text += f"  ✅ <b>{name}</b>\n"
+    else: text += f"  ➖ <i>هیچی</i>\n"
     btns = []
     for k, e, n in TD_CATEGORIES_ALL:
         mark = "✅" if k in sel else "◽"
@@ -1224,10 +1191,10 @@ def render_td_settings(g):
     t = g["turns_per_player"]; tm = g["timeout_sec"]
     tb = [Button.inline(("✅ " if n == t else "◽ ") + str(n), data=f"td_turns:{n}".encode()) for n in TD_TURNS_OPTIONS]
     tmb = [Button.inline(("✅ " if n == tm else "◽ ") + f"{n}s", data=f"td_time:{n}".encode()) for n in TD_TIMEOUT_OPTIONS]
-    text = (f"{E('gamepad','🎮')} <b>مرحله ۲ از ۳ — تنظیمات</b>\n{DIV}\n\n"
-            f"{E('chart','📊')} <b>نوبت هر نفر:</b> <code>{t}</code>\n"
-            f"{E('hourglass','⏳')} <b>زمان هر نوبت:</b> <code>{tm}</code> ثانیه\n\n"
-            f"{E('info','ℹ️')} <i>با دکمه‌ها تنظیم کن</i>")
+    text = (f"🎮 <b>مرحله ۲ از ۳ — تنظیمات</b>\n{DIV}\n\n"
+            f"📊 <b>نوبت هر نفر:</b> <code>{t}</code>\n"
+            f"⏳ <b>زمان هر نوبت:</b> <code>{tm}</code> ثانیه\n\n"
+            f"ℹ️ <i>با دکمه‌ها تنظیم کن</i>")
     return text, [
         [Button.inline("— 📊 تعداد نوبت —", data=b"td_noop")], tb,
         [Button.inline("— ⏳ زمان —", data=b"td_noop")], tmb,
@@ -1237,12 +1204,12 @@ def render_td_settings(g):
 
 def render_td_summary(g):
     cats = "، ".join([next((n for k, e, n in TD_CATEGORIES_ALL if k == c), c) for c in g["categories"]])
-    text = (f"{E('check','✅')} <b>مرحله ۳ از ۳ — خلاصه</b>\n{DIV}\n\n"
-            f"{E('magic','🎭')} <b>جرعت یا حقیقت</b>\n\n"
-            f"{E('list','📋')} <b>دسته‌ها:</b> {h(cats)}\n"
-            f"{E('chart','📊')} <b>نوبت هر نفر:</b> <code>{g['turns_per_player']}</code>\n"
-            f"{E('hourglass','⏳')} <b>زمان هر نوبت:</b> <code>{g['timeout_sec']}</code> ثانیه\n\n"
-            f"{E('info','ℹ️')} <i>بعد از تأیید، پیام شرکت توی گروه فرستاده می‌شه</i>")
+    text = (f"✅ <b>مرحله ۳ از ۳ — خلاصه</b>\n{DIV}\n\n"
+            f"🎭 <b>جرعت یا حقیقت</b>\n\n"
+            f"📋 <b>دسته‌ها:</b> {h(cats)}\n"
+            f"📊 <b>نوبت هر نفر:</b> <code>{g['turns_per_player']}</code>\n"
+            f"⏳ <b>زمان هر نوبت:</b> <code>{g['timeout_sec']}</code> ثانیه\n\n"
+            f"ℹ️ <i>بعد از تأیید، پیام شرکت توی گروه فرستاده می‌شه</i>")
     return text, [[Button.inline("🚀 ایجاد بازی در گروه", data=b"td_create")],
                   [Button.inline("⬅️ قبلی", data=b"td_settings")],
                   [Button.inline("❌ لغو", data=b"td_cancel")]]
@@ -1262,23 +1229,23 @@ async def td_send_setup_menu(aid, screen="welcome", game=None):
 
 def _render_td_join_text(g):
     pl = list(g["players"].values()); c = len(pl)
-    if c == 0: nb = f"     {E('cross','➖')} <i>هنوز کسی نیست</i>"
+    if c == 0: nb = f"     ➖ <i>هنوز کسی نیست</i>"
     else:
         re_ = ["🥇", "🥈", "🥉"]; lines = []
         for i, p in enumerate(pl):
             r = re_[i] if i < 3 else f"<b>{i+1:02d}.</b>"
             u = f"  <i>@{p['username']}</i>" if p.get("username") else ""
-            lines.append(f"  {r} {E('check','✅')} <b>{h(p['name'])}</b>{u}")
+            lines.append(f"  {r} ✅ <b>{h(p['name'])}</b>{u}")
         nb = "\n".join(lines)
     cats = "، ".join([next((n for k, e, n in TD_CATEGORIES_ALL if k == x), x) for x in g["categories"]])
-    text = (f"{E('magic','🎭')} <b>UNICORN · TRUTH or DARE</b> {E('magic','🎭')}\n{DIV}\n\n"
-            f"{E('party','🎉')} <b>یه بازی هیجان‌انگیز شروع می‌شه!</b>\n{DIV2}\n\n"
-            f"{E('list','📋')} <b>دسته‌ها:</b>  {h(cats)}\n"
-            f"{E('chart','📊')} <b>نوبت هر نفر:</b>  <code>{g['turns_per_player']}</code>\n"
-            f"{E('hourglass','⏳')} <b>زمان هر نوبت:</b>  <code>{g['timeout_sec']}</code> ثانیه\n\n"
-            f"{E('gem','💎')} <b>بانک آماده — بدون AI</b>\n\n{DIV}\n"
-            f"{E('crown','👑')} <b>شرکت‌کنندگان ({c}):</b>\n{nb}\n{DIV}\n\n"
-            f"{E('target','🎯')} <b>برای شرکت، روی دکمه بزن</b> {E('point','👇')}")
+    text = (f"🎭 <b>UNICORN · TRUTH or DARE</b> 🎭\n{DIV}\n\n"
+            f"🎉 <b>یه بازی هیجان‌انگیز شروع می‌شه!</b>\n{DIV2}\n\n"
+            f"📋 <b>دسته‌ها:</b>  {h(cats)}\n"
+            f"📊 <b>نوبت هر نفر:</b>  <code>{g['turns_per_player']}</code>\n"
+            f"⏳ <b>زمان هر نوبت:</b>  <code>{g['timeout_sec']}</code> ثانیه\n\n"
+            f"💎 <b>بانک آماده — بدون AI</b>\n\n{DIV}\n"
+            f"👑 <b>شرکت‌کنندگان ({c}):</b>\n{nb}\n{DIV}\n\n"
+            f"🎯 <b>برای شرکت، روی دکمه بزن</b> 👇")
     btns = [
         _ctrl_row(),
         [Button.inline("▶️ شروع بازی (ادمین)", data=b"td_start")],
@@ -1291,7 +1258,6 @@ async def td_broadcast_join(g):
     try:
         sent = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
         if sent: g["join_msg_id"] = sent.id
-        logger.info(f"TD: join message sent (msg_id={sent.id if sent else 'FAIL'})")
     except Exception as e: logger.exception(f"td bcast: {e}")
 
 
@@ -1301,7 +1267,6 @@ async def td_refresh_join(g):
     text, btns = _render_td_join_text(g)
     try:
         await _client.edit_message(g["group_id"], mid, text=text, buttons=btns, parse_mode="html")
-        return
     except MessageNotModifiedError: return
     except Exception as e: logger.warning(f"td refresh: {e}")
 
@@ -1313,14 +1278,13 @@ async def td_start_game(g):
     g["order"] = order; g["current_index"] = 0
     for uid in g["order"]:
         g["players"][uid]["turns_done"] = 0
-    pl = "\n".join([f"  {E('point','👉')} <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
+    pl = "\n".join([f"  👉 <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
     sent = await safe_send(g["group_id"],
-                    f"{E('party','🎉')} <b>بازی شروع شد!</b> {E('party','🎉')}\n{DIV}\n\n"
+                    f"🎉 <b>بازی شروع شد!</b> 🎉\n{DIV}\n\n"
                     f"🎲 <b>ترتیب تصادفی بازیکنان:</b>\n{pl}\n\n"
-                    f"{E('rocket','🚀')} <b>آماده باشید...</b>",
+                    f"🚀 <b>آماده باشید...</b>",
                     buttons=[_ctrl_row()], parse_mode="html")
     if sent: g["join_msg_id"] = sent.id
-    logger.info(f"TD: game started in {g['group_id']}, msg_id={sent.id if sent else 'FAIL'}")
     await asyncio.sleep(2)
     await td_next_turn(g)
 
@@ -1332,11 +1296,11 @@ async def td_resume_game(g):
     g["order"] = order; g["current_index"] = 0
     for uid in g["order"]:
         g["players"][uid]["turns_done"] = 0
-    pl = "\n".join([f"  {E('point','👉')} <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
+    pl = "\n".join([f"  👉 <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
     sent = await safe_send(g["group_id"],
-                    f"{E('rocket','🚀')} <b>بازی از سر گرفته شد!</b> {E('party','🎉')}\n{DIV}\n\n"
+                    f"🚀 <b>بازی از سر گرفته شد!</b> 🎉\n{DIV}\n\n"
                     f"🎲 <b>ترتیب جدید:</b>\n{pl}\n\n"
-                    f"{E('bolt','⚡')} <b>آماده باشید...</b>",
+                    f"⚡ <b>آماده باشید...</b>",
                     buttons=[_ctrl_row()], parse_mode="html")
     if sent: g["join_msg_id"] = sent.id
     await asyncio.sleep(2)
@@ -1370,19 +1334,18 @@ async def td_next_turn(g):
     cat_rows.append([Button.inline("⏭ رد کردن نوبت", data=b"td_skip_turn")])
     cat_rows.append(_ctrl_row())
     total = g["timeout_sec"]; bar = time_bar_colored(total, total); tb = time_badge(total, total)
-    text = (f"{E('magic','🎭')} <b>TRUTH or DARE</b> {E('magic','🎭')}\n{DIV}\n\n"
-            f"{E('target','🎯')} <b>نوبت {h(p['name'])}</b>\n"
-            f"{E('chart','📊')} نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
+    text = (f"🎭 <b>TRUTH or DARE</b> 🎭\n{DIV}\n\n"
+            f"🎯 <b>نوبت {h(p['name'])}</b>\n"
+            f"📊 نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
             f"{DIV2}\n{tb} <b>زمان:</b> <code>{total}</code> ثانیه\n{bar}  <b>100%</b>\n{DIV2}\n\n"
-            f"{E('sparkle','✨')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
-            f"  {E('magic','🎭')} <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
-            f"  {E('fire','🔥')} <b>حقیقت +18</b>  <i>— سوال جسورانه</i>\n"
-            f"  {E('bolt','⚡')} <b>جرعت</b>  <i>— چالش بامزه</i>\n"
-            f"  {E('heart','💋')} <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
-            f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
+            f"✨ <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
+            f"  🎭 <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
+            f"  🔥 <b>حقیقت +18</b>  <i>— سوال جسورانه</i>\n"
+            f"  ⚡ <b>جرعت</b>  <i>— چالش بامزه</i>\n"
+            f"  💋 <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
+            f"ℹ️ <i>فقط خودت کلیک کن</i>")
     sent = await safe_send(g["group_id"], text, buttons=cat_rows, parse_mode="html")
     if sent: g["turn_msg_id"] = sent.id
-    logger.info(f"TD: turn msg sent to {g['group_id']}, msg_id={sent.id if sent else 'FAIL'}")
     cur_task = asyncio.current_task()
     old_task = g.get("timeout_task")
     if old_task and old_task is not cur_task and not old_task.done():
@@ -1410,21 +1373,21 @@ async def td_live_countdown(g, uid, total):
             cat_rows.append([Button.inline("⏭ رد کردن نوبت", data=b"td_skip_turn")])
             cat_rows.append(_ctrl_row())
             if remaining <= 3 and remaining > 0:
-                tw = f"{E('alert','🚨')} <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
+                tw = f"🚨 <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
             elif remaining == 0:
-                tw = f"{E('hourglass','⏰')} <b>وقت تموم شد!</b>"
+                tw = f"⏰ <b>وقت تموم شد!</b>"
             else:
                 tw = f"{tb} <b>زمان:</b> <code>{remaining}</code> ثانیه"
-            text = (f"{E('magic','🎭')} <b>TRUTH or DARE</b> {E('magic','🎭')}\n{DIV}\n\n"
-                    f"{E('target','🎯')} <b>نوبت {h(p['name'])}</b>\n"
-                    f"{E('chart','📊')} نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
+            text = (f"🎭 <b>TRUTH or DARE</b> 🎭\n{DIV}\n\n"
+                    f"🎯 <b>نوبت {h(p['name'])}</b>\n"
+                    f"📊 نوبت <code>{p['turns_done']+1}/{g['turns_per_player']}</code>\n"
                     f"{DIV2}\n{tw}\n{bar}  <b>{pct}%</b>\n{DIV2}\n\n"
-                    f"{E('sparkle','✨')} <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
-                    f"  {E('magic','🎭')} <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
-                    f"  {E('fire','🔥')} <b>حقیقت +18</b>  <i>— سوال جسورانه</i>\n"
-                    f"  {E('bolt','⚡')} <b>جرعت</b>  <i>— چالش بامزه</i>\n"
-                    f"  {E('heart','💋')} <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
-                    f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
+                    f"✨ <b>{h(p['name'])}</b> یکی رو انتخاب کن:\n\n"
+                    f"  🎭 <b>حقیقت</b>  <i>— سوال صادقانه</i>\n"
+                    f"  🔥 <b>حقیقت +18</b>  <i>— سوال جسورانه</i>\n"
+                    f"  ⚡ <b>جرعت</b>  <i>— چالش بامزه</i>\n"
+                    f"  💋 <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
+                    f"ℹ️ <i>فقط خودت کلیک کن</i>")
             if g.get("current_player") != uid or g.get("current_state") != "picking_choice": return
             if text != last_shown:
                 ok = await safe_edit_msg(gid, g["turn_msg_id"], text, buttons=cat_rows)
@@ -1435,8 +1398,8 @@ async def td_live_countdown(g, uid, total):
             p = g["players"].get(uid)
             if p:
                 await safe_send(g["group_id"],
-                                f"{E('hourglass','⏰')} <b>وقت {h(p['name'])} تموم شد!</b>\n"
-                                f"{E('info','ℹ️')} نوبت بعدی می‌ره...",
+                                f"⏰ <b>وقت {h(p['name'])} تموم شد!</b>\n"
+                                f"ℹ️ نوبت بعدی می‌ره...",
                                 buttons=[_ctrl_row()], parse_mode="html")
                 p["turns_done"] += 1
                 await asyncio.sleep(1.5); g["current_index"] += 1
@@ -1459,26 +1422,26 @@ async def td_play(g, uid, kind):
     label = next((n for k, e, n in TD_CATEGORIES_ALL if k == kind), kind)
     txt = get_td_from_bank(kind, g.get("used_texts", []))
     if not txt:
-        await safe_send(gid, f"{E('cross','❌')} <b>بانک خالی است</b>",
+        await safe_send(gid, f"❌ <b>بانک خالی است</b>",
                         buttons=[_ctrl_row()], parse_mode="html")
         p["turns_done"] += 1
         await asyncio.sleep(2); g["current_index"] += 1; await td_next_turn(g); return
     g["used_texts"].append(txt)
     if len(g["used_texts"]) > 800: g["used_texts"] = g["used_texts"][-800:]
-    header = {"truth": f"{E('magic','🎭')}  <b>ح  ق  ی  ق  ت</b>  {E('magic','🎭')}",
-              "truth18": f"{E('fire','🔥')}  <b>حقیقت +18</b>  {E('fire','🔥')}",
-              "dare": f"{E('bolt','⚡')}  <b>ج  ر  ع  ت</b>  {E('bolt','⚡')}",
-              "dare18": f"{E('heart','💋')}  <b>جرعت +18</b>  {E('heart','💋')}"}.get(kind, f"{E('magic','🎭')}  <b>{label}</b>  {E('magic','🎭')}")
+    header = {"truth": "🎭  <b>ح  ق  ی  ق  ت</b>  🎭",
+              "truth18": "🔥  <b>حقیقت +18</b>  🔥",
+              "dare": "⚡  <b>ج  ر  ع  ت</b>  ⚡",
+              "dare18": "💋  <b>جرعت +18</b>  💋"}.get(kind, f"🎭  <b>{label}</b>  🎭")
     decorated = decorate_td_text(kind, h(txt))
-    hero_line = {"truth": f"{E('sparkle','✨')} <b>سوال صادقانه برای تو</b> {E('sparkle','✨')}",
-                 "truth18": f"{E('fire','🔥')} <b>سوال جسورانه برای تو</b> {E('fire','🔥')}",
-                 "dare": f"{E('party','🎉')} <b>چالش بامزه برای تو</b> {E('party','🎉')}",
-                 "dare18": f"{E('heart','💋')} <b>چالش جسورانه برای تو</b> {E('heart','💋')}"}.get(kind, f"{E('magic','🎭')} <b>متن بازی</b> {E('magic','🎭')}")
+    hero_line = {"truth": "✨ <b>سوال صادقانه برای تو</b> ✨",
+                 "truth18": "🔥 <b>سوال جسورانه برای تو</b> 🔥",
+                 "dare": "🎉 <b>چالش بامزه برای تو</b> 🎉",
+                 "dare18": "💋 <b>چالش جسورانه برای تو</b> 💋"}.get(kind, "🎭 <b>متن بازی</b> 🎭")
     result = (f"{header}\n{DIV}\n\n{hero_line}\n{DIV2}\n\n"
-              f"{E('crown','👑')} <b>نوبت:</b>  <b>{h(p['name'])}</b>  {E('crown','👑')}\n\n"
-              f"{E('message','💬')} <b>متن:</b>\n\n"
+              f"👑 <b>نوبت:</b>  <b>{h(p['name'])}</b>  👑\n\n"
+              f"💬 <b>متن:</b>\n\n"
               f"<blockquote>{decorated}</blockquote>\n\n"
-              f"{DIV2}\n{E('gem','💎')} <i>انجامش بده و توی گروه بگو!</i>")
+              f"{DIV2}\n💎 <i>انجامش بده و توی گروه بگو!</i>")
     btns = [
         [Button.inline("✅ جواب دادم — نفر بعدی", data=b"td_done")],
         [Button.inline("⏭ رد کردن نوبت", data=b"td_next_now")],
@@ -1486,7 +1449,6 @@ async def td_play(g, uid, kind):
     ]
     sent = await safe_send(gid, result, buttons=btns, parse_mode="html")
     if sent: g["join_msg_id"] = sent.id
-    logger.info(f"TD: challenge msg sent to {gid}, msg_id={sent.id if sent else 'FAIL'}")
     p["turns_done"] += 1
     g["current_state"] = "waiting_done"
     g["auto_next_task"] = asyncio.create_task(td_auto_next(g, uid))
@@ -1515,8 +1477,8 @@ async def td_skip_turn(g):
         try: await _client.delete_messages(g["group_id"], g["turn_msg_id"]); g["turn_msg_id"] = None
         except Exception: pass
     await safe_send(g["group_id"],
-                    f"{E('skip','⏭')} <b>نوبت {h(pn)} رد شد</b>\n"
-                    f"{E('info','ℹ️')} <i>در حال رفتن به نوبت بعدی...</i>",
+                    f"⏭ <b>نوبت {h(pn)} رد شد</b>\n"
+                    f"ℹ️ <i>در حال رفتن به نوبت بعدی...</i>",
                     buttons=[_ctrl_row()], parse_mode="html")
     if p: p["turns_done"] += 1
     await asyncio.sleep(1.5); g["current_index"] += 1; await td_next_turn(g)
@@ -1543,10 +1505,10 @@ async def td_stop_game(g, by_admin_id=None):
     ]
     try:
         await safe_send(g["group_id"],
-                        f"🛑 {E('warning','⚠️')} <b>بازی متوقف شد!</b>\n{DIV}\n\n"
-                        f"{E('info','ℹ️')} بازی توسط ادمین متوقف شد\n\n"
-                        f"{E('user','👤')} بازیکنان فعلی: <code>{c}</code>\n\n"
-                        f"{E('rocket','🚀')} ادمین می‌تونه مجدد شروع کنه یا حذف کنه",
+                        f"🛑 ⚠️ <b>بازی متوقف شد!</b>\n{DIV}\n\n"
+                        f"ℹ️ بازی توسط ادمین متوقف شد\n\n"
+                        f"👤 بازیکنان فعلی: <code>{c}</code>\n\n"
+                        f"🚀 ادمین می‌تونه مجدد شروع کنه یا حذف کنه",
                         buttons=btns, parse_mode="html")
     except Exception as e: logger.exception(f"stop announce: {e}")
 
@@ -1564,8 +1526,8 @@ async def td_destroy_game(g):
             except Exception: pass
     try:
         await safe_send(g["group_id"],
-                        f"🗑 {E('cross','❌')} <b>بازی به طور کامل حذف شد</b>\n"
-                        f"{E('info','ℹ️')} برای شروع جدید <code>جرعت</code> بزنید",
+                        f"🗑 ❌ <b>بازی به طور کامل حذف شد</b>\n"
+                        f"ℹ️ برای شروع جدید <code>جرعت</code> بزنید",
                         parse_mode="html")
     except Exception: pass
     TD_ACTIVE_GAMES.pop(g["group_id"], None)
@@ -1580,11 +1542,11 @@ async def td_finish(g):
         except Exception: pass
     g["auto_next_task"] = None
     ps = g["players"]
-    lines = [f"{E('flag','🏁')} <b>بازی جرعت یا حقیقت تموم شد!</b>\n{DIV}\n\n",
-             f"{E('stats','📊')} <b>خلاصه بازیکنان:</b>"]
+    lines = [f"🏁 <b>بازی جرعت یا حقیقت تموم شد!</b>\n{DIV}\n\n",
+             f"📊 <b>خلاصه بازیکنان:</b>"]
     for uid, p in ps.items():
-        lines.append(f"  {E('point','👉')} <b>{h(p['name'])}</b> — <code>{p['turns_done']}</code> نوبت")
-    lines.append(f"\n{E('party','🎉')} <b>ممنون که بازی کردید!</b>")
+        lines.append(f"  👉 <b>{h(p['name'])}</b> — <code>{p['turns_done']}</code> نوبت")
+    lines.append(f"\n🎉 <b>ممنون که بازی کردید!</b>")
     btns = [
         _ctrl_row(),
         [Button.inline("▶️ شروع مجدد", data=b"td_restart_confirm"),
@@ -1620,8 +1582,8 @@ async def on_group_message(event):
         if existing and existing.get("state") in ("waiting", "playing"):
             try:
                 await event.reply(
-                    f"{E('warning','⚠️')} <b>یه بازی در این گروه فعاله!</b>\n"
-                    f"{E('info','ℹ️')} اول اون رو تموم یا متوقف کن.",
+                    f"⚠️ <b>یه بازی در این گروه فعاله!</b>\n"
+                    f"ℹ️ اول اون رو تموم یا متوقف کن.",
                     parse_mode="html")
             except Exception: pass
             return
@@ -1629,8 +1591,8 @@ async def on_group_message(event):
         game = create_td_setup(uid, event.chat_id)
         try:
             await event.reply(
-                f"{E('check','✅')} <b>منوی جرعت یا حقیقت به پیوی فرستاده شد</b>\n"
-                f"{DIV}\n\n{E('magic','🎭')} تنظیمات رو توی پیوی انجام بده.",
+                f"✅ <b>منوی جرعت یا حقیقت به پیوی فرستاده شد</b>\n"
+                f"{DIV}\n\n🎭 تنظیمات رو توی پیوی انجام بده.",
                 parse_mode="html")
         except Exception:
             pass
@@ -1700,7 +1662,7 @@ async def on_callback(event):
             if not g: await event.answer("منقضی", alert=True); return
             await event.answer("✅")
             try:
-                await safe_edit(event, f"{E('check','✅')} <b>بازی ساخته شد!</b>",
+                await safe_edit(event, f"✅ <b>بازی ساخته شد!</b>",
                                 parse_mode="html", buttons=None)
             except Exception: pass
             g["state"] = "waiting"; TD_ACTIVE_GAMES[g["group_id"]] = g
@@ -1708,7 +1670,7 @@ async def on_callback(event):
             await td_broadcast_join(g); return
         if data == "td_cancel":
             TD_SETUP_GAMES.pop(uid, None); await event.answer("❌")
-            try: await safe_edit(event, f"{E('cross','❌')} لغو شد", parse_mode="html", buttons=None)
+            try: await safe_edit(event, f"❌ لغو شد", parse_mode="html", buttons=None)
             except Exception: pass
             return
 
@@ -1736,9 +1698,9 @@ async def on_callback(event):
             await event.answer(f"🎉 {name}، پیوستی!")
             try:
                 await safe_send(g["group_id"],
-                    f"🖐 {E('sparkle','✨')} <b>{h(name)} به بازی پیوست!</b> {E('sparkle','✨')}\n"
-                    f"{E('user','👤')} تعداد بازیکنان: <code>{len(g['players'])}</code>\n"
-                    f"{E('info','ℹ️')} به صورت <b>تصادفی</b> توی نوبت‌ها قرار گرفت",
+                    f"🖐 ✨ <b>{h(name)} به بازی پیوست!</b> ✨\n"
+                    f"👤 تعداد بازیکنان: <code>{len(g['players'])}</code>\n"
+                    f"ℹ️ به صورت <b>تصادفی</b> توی نوبت‌ها قرار گرفت",
                     buttons=[_ctrl_row()], parse_mode="html")
             except Exception: pass
             await td_refresh_join(g)
@@ -1762,9 +1724,9 @@ async def on_callback(event):
             await event.answer()
             try:
                 await safe_edit(event,
-                                f"▶️ {E('rocket','🚀')} <b>شروع مجدد بازی</b>\n{DIV}\n\n"
-                                f"{E('user','👤')} بازیکنان: <code>{len(g['players'])}</code>\n\n"
-                                f"{E('info','ℹ️')} مطمئنی؟",
+                                f"▶️ 🚀 <b>شروع مجدد بازی</b>\n{DIV}\n\n"
+                                f"👤 بازیکنان: <code>{len(g['players'])}</code>\n\n"
+                                f"ℹ️ مطمئنی؟",
                                 buttons=[[Button.inline("✅ بله، شروع کن", data=b"td_restart_yes")],
                                          [Button.inline("❌ لغو", data=b"td_restart_no")]],
                                 parse_mode="html")
@@ -1779,7 +1741,7 @@ async def on_callback(event):
                 await event.answer("⚠️ حداقل ۲ بازیکن!", alert=True); return
             await event.answer("🚀 شروع مجدد...")
             try:
-                await safe_edit(event, f"{E('check','✅')} <b>شروع شد!</b>",
+                await safe_edit(event, f"✅ <b>شروع شد!</b>",
                                 parse_mode="html", buttons=None)
             except Exception: pass
             asyncio.create_task(td_resume_game(g)); return
@@ -1806,7 +1768,7 @@ async def on_callback(event):
             try:
                 if g.get("join_msg_id"):
                     await _client.edit_message(g["group_id"], g["join_msg_id"],
-                        text=f"{E('check','✅')} <b>شروع شد!</b>", parse_mode="html", buttons=None)
+                        text=f"✅ <b>شروع شد!</b>", parse_mode="html", buttons=None)
             except Exception: pass
             asyncio.create_task(td_start_game(g)); return
 
@@ -1829,8 +1791,8 @@ async def on_callback(event):
                 except Exception: pass
             g["current_state"] = "moving_on"; g["current_index"] += 1
             await safe_send(g["group_id"],
-                            f"{E('check','✅')} <b>ثبت شد!</b>\n"
-                            f"{E('rocket','🚀')} <i>در حال رفتن به نفر بعدی...</i>",
+                            f"✅ <b>ثبت شد!</b>\n"
+                            f"🚀 <i>در حال رفتن به نفر بعدی...</i>",
                             buttons=[_ctrl_row()], parse_mode="html")
             asyncio.create_task(td_next_turn(g)); return
         if data == "td_skip_turn":
@@ -1871,5 +1833,5 @@ def init_td(client, db, is_admin_fn, add_points_fn):
                              events.NewMessage(func=_td_trigger_filter))
     client.add_event_handler(on_callback,
                              events.CallbackQuery(pattern=r"^td_"))
-    logger.info("🎭 Truth-or-Dare v3.2 — safe_edit_msg fallback fix")
+    logger.info("🎭 Truth-or-Dare v4 — NO premium emojis (bug-proof)")
     return {"on_group_message": on_group_message, "on_callback": on_callback}
