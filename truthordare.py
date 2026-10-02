@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-🎭 TRUTH OR DARE — UNICORN EDITION v3
-+ 🛑 Admin can fully stop game
-+ ▶️ Admin can restart with same players
-+ 🖐 Join button in EVERY message
-+ 🛂 Join requires ADMIN APPROVAL via DM
-+ 💬 500 more truth18 questions (total ~600)
+🎭 TRUTH OR DARE — UNICORN EDITION v3.1
++ 🛑 Stop button in EVERY message
++ 🖐 Join button in EVERY message (instant, no approval)
++ ▶️ Restart after stop
 """
 
 import re, random, asyncio, logging
@@ -17,9 +15,6 @@ from telethon.errors import MessageNotModifiedError, FloodWaitError
 logger = logging.getLogger("TD")
 IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
 
-# ═══════════════════════════════════════════════════════════
-# EMOJI + HELPERS
-# ═══════════════════════════════════════════════════════════
 PREM = {
     "laugh": "5368324170671202286", "joy": "5780769611324455942",
     "heart": "5443038326535759644", "party": "5456359790390093750",
@@ -106,9 +101,6 @@ async def _stop_task_safe(task, settle=0.35):
     if settle > 0: await asyncio.sleep(settle)
 
 
-# ═══════════════════════════════════════════════════════════
-# GLOBAL REFS (set in init_td)
-# ═══════════════════════════════════════════════════════════
 _client = None
 _db = None
 _is_admin = None
@@ -165,19 +157,14 @@ TD_ACTIVE_GAMES = {}
 
 
 # ═══════════════════════════════════════════════════════════
-# 🎛 BUTTON HELPERS
+# 🎛 UNIVERSAL CONTROL ROW — این همون دکمه‌هاییه که همه‌جا میان
 # ═══════════════════════════════════════════════════════════
-def _join_btn():
-    return Button.inline("🖐 شرکت می‌کنم", data=b"td_midjoin")
-
-
-def _stop_btn():
-    return Button.inline("🛑 توقف بازی", data=b"td_stop")
-
-
-def _bottom_ctrl_row():
-    """Universal bottom row with join + stop buttons."""
-    return [_join_btn(), _stop_btn()]
+def _ctrl_row():
+    """دو دکمه اصلی: شرکت + توقف."""
+    return [
+        Button.inline("🖐 شرکت می‌کنم", data=b"td_midjoin"),
+        Button.inline("🛑 توقف بازی", data=b"td_stop"),
+    ]
 
 
 # ═══════════════════════════════════════════════════════════
@@ -604,7 +591,6 @@ TD_BANK = {
         "ترجیح می‌دی شریکت خوش‌خوراک باشه یا کم‌خوراک؟",
         "ترجیح می‌دی شریکت اهل سفر باشه یا خونه‌نشین؟",
         "ترجیح می‌دی شریکت اهل کتاب باشه یا فیلم؟",
-        "ترجیح می‌دی شریکت اهل موزیک باشه یا ورزش؟",
         "بزرگ‌ترین راز جنسی‌ت چیه که به هیچ‌کس نگفتی؟",
         "تا حالا به یکی از اعضای خانواده فکر جنسی کردی؟",
         "تا حالا به یکی از دوستات فکر جنسی کردی؟",
@@ -1165,8 +1151,7 @@ def create_td_setup(aid, gid):
          "current_index": 0, "current_player": None, "current_state": None,
          "join_msg_id": None, "turn_msg_id": None, "timeout_task": None,
          "used_texts": [], "auto_next_task": None,
-         "mid_join_msg_id": None, "started_at": None, "stopped_at": None,
-         "pending_joins": {}}
+         "started_at": None, "stopped_at": None}
     TD_SETUP_GAMES[aid] = g; return g
 
 
@@ -1175,8 +1160,7 @@ def _find_td_game(event):
         mid = getattr(event, "message_id", None)
         if mid:
             for g in TD_ACTIVE_GAMES.values():
-                if (g.get("join_msg_id") == mid or g.get("turn_msg_id") == mid
-                        or g.get("mid_join_msg_id") == mid):
+                if (g.get("join_msg_id") == mid or g.get("turn_msg_id") == mid):
                     return g
     except Exception: pass
     try:
@@ -1191,27 +1175,14 @@ def _find_td_game(event):
     return None
 
 
-def _find_game_for_admin(admin_id, target_uid):
-    """Find game belonging to admin_id that has pending_joins[target_uid]."""
-    for g in TD_ACTIVE_GAMES.values():
-        if g.get("admin_id") == admin_id:
-            pending = g.get("pending_joins", {})
-            if target_uid in pending:
-                return g
-    return None
-
-
-# ═══════════════════════════════════════════════════════════
-# RENDER MENUS
-# ═══════════════════════════════════════════════════════════
 def render_td_welcome(g):
-    return (f"{E('magic','🎭')} <b>جرعت یا حقیقت — UNICORN v3</b> {E('magic','🎭')}\n{DIV}\n\n"
+    return (f"{E('magic','🎭')} <b>جرعت یا حقیقت — UNICORN v3.1</b> {E('magic','🎭')}\n{DIV}\n\n"
             f"{E('sparkle','✨')} <b>سلام ادمین عزیز!</b> {E('wave','👋')}\n\n"
-            f"{E('info','ℹ️')} <b>قابلیت‌های جدید:</b>\n"
-            f"  🛑 توقف کامل بازی در هر لحظه\n"
-            f"  ▶️ شروع مجدد از همون بازیکنان\n"
+            f"{E('info','ℹ️')} <b>قابلیت‌ها:</b>\n"
             f"  🖐 دکمه شرکت در همه‌ی پیام‌ها\n"
-            f"  🛂 تایید پیوستن از طریق پیوی ادمین\n\n"
+            f"  🛑 دکمه توقف در همه‌ی پیام‌ها\n"
+            f"  ⚡ پیوستن فوری (بدون نیاز به تایید)\n"
+            f"  ▶️ شروع مجدد بعد از توقف\n\n"
             f"{E('magic','✨')} <i>آماده‌ای؟</i>",
             [[Button.inline("🚀 شروع تنظیمات", data=b"td_setup")],
              [Button.inline("❌ لغو", data=b"td_cancel")]])
@@ -1298,8 +1269,8 @@ def _render_td_join_text(g):
             f"{E('crown','👑')} <b>شرکت‌کنندگان ({c}):</b>\n{nb}\n{DIV}\n\n"
             f"{E('target','🎯')} <b>برای شرکت، روی دکمه بزن</b> {E('point','👇')}")
     btns = [
-        [_join_btn()],
-        [_stop_btn(), Button.inline("▶️ شروع بازی (ادمین)", data=b"td_start")],
+        _ctrl_row(),
+        [Button.inline("▶️ شروع بازی (ادمین)", data=b"td_start")],
     ]
     return text, btns
 
@@ -1309,6 +1280,7 @@ async def td_broadcast_join(g):
     try:
         sent = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
         if sent: g["join_msg_id"] = sent.id
+        logger.info(f"TD: join message sent (msg_id={sent.id if sent else 'FAIL'})")
     except Exception as e: logger.exception(f"td bcast: {e}")
 
 
@@ -1320,52 +1292,7 @@ async def td_refresh_join(g):
         await _client.edit_message(g["group_id"], mid, text=text, buttons=btns, parse_mode="html")
         return
     except MessageNotModifiedError: return
-    except Exception as e: logger.warning(f"td refresh m1: {e}")
-    try:
-        msg = await _client.get_messages(g["group_id"], ids=mid)
-        if msg: await msg.edit(text=text, buttons=btns, parse_mode="html"); return
-    except Exception as e: logger.warning(f"td refresh m2: {e}")
-    try:
-        new = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
-        if new:
-            g["join_msg_id"] = new.id
-            try: await _client.delete_messages(g["group_id"], mid)
-            except Exception: pass
-    except Exception as e: logger.exception(f"td refresh m3: {e}")
-
-
-def _render_midjoin_text(g):
-    c = len(g["players"])
-    return (f"🎮 {E('gamepad','🎮')} <b>پنل کنترل بازی</b> {E('gamepad','🎮')}\n{DIV}\n\n"
-            f"{E('info','ℹ️')} <i>بازی در جریانه — می‌تونی همین الان ملحق بشی!</i>\n\n"
-            f"{E('user','👤')} بازیکنان فعلی: <code>{c}</code>\n\n"
-            f"{E('sparkle','✨')} روی دکمه‌ها بزن 👇")
-
-
-async def td_send_midjoin_message(g):
-    try:
-        text = _render_midjoin_text(g)
-        btns = [
-            _bottom_ctrl_row(),
-            [Button.inline("▶️ شروع مجدد (ادمین)", data=b"td_restart_confirm")],
-        ]
-        sent = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
-        if sent: g["mid_join_msg_id"] = sent.id
-    except Exception as e: logger.exception(f"midjoin msg: {e}")
-
-
-async def td_refresh_midjoin(g):
-    mid = g.get("mid_join_msg_id")
-    if not mid: return
-    text = _render_midjoin_text(g)
-    btns = [
-        _bottom_ctrl_row(),
-        [Button.inline("▶️ شروع مجدد (ادمین)", data=b"td_restart_confirm")],
-    ]
-    try:
-        await _client.edit_message(g["group_id"], mid, text=text, buttons=btns, parse_mode="html")
-    except Exception as e:
-        logger.warning(f"midjoin refresh: {e}")
+    except Exception as e: logger.warning(f"td refresh: {e}")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1379,12 +1306,14 @@ async def td_start_game(g):
     for uid in g["order"]:
         g["players"][uid]["turns_done"] = 0
     pl = "\n".join([f"  {E('point','👉')} <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
-    await safe_send(g["group_id"],
+    # بازی شروع شد + دکمه‌های کنترلی
+    sent = await safe_send(g["group_id"],
                     f"{E('party','🎉')} <b>بازی شروع شد!</b> {E('party','🎉')}\n{DIV}\n\n"
                     f"🎲 <b>ترتیب تصادفی بازیکنان:</b>\n{pl}\n\n"
                     f"{E('rocket','🚀')} <b>آماده باشید...</b>",
-                    buttons=[_bottom_ctrl_row()], parse_mode="html")
-    await td_send_midjoin_message(g)
+                    buttons=[_ctrl_row()], parse_mode="html")
+    if sent: g["join_msg_id"] = sent.id
+    logger.info(f"TD: game started in {g['group_id']}, msg_id={sent.id if sent else 'FAIL'}")
     await asyncio.sleep(2)
     await td_next_turn(g)
 
@@ -1397,16 +1326,12 @@ async def td_resume_game(g):
     for uid in g["order"]:
         g["players"][uid]["turns_done"] = 0
     pl = "\n".join([f"  {E('point','👉')} <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
-    await safe_send(g["group_id"],
+    sent = await safe_send(g["group_id"],
                     f"{E('rocket','🚀')} <b>بازی از سر گرفته شد!</b> {E('party','🎉')}\n{DIV}\n\n"
                     f"🎲 <b>ترتیب جدید:</b>\n{pl}\n\n"
                     f"{E('bolt','⚡')} <b>آماده باشید...</b>",
-                    buttons=[_bottom_ctrl_row()], parse_mode="html")
-    if g.get("mid_join_msg_id"):
-        try: await _client.delete_messages(g["group_id"], g["mid_join_msg_id"])
-        except Exception: pass
-    g["mid_join_msg_id"] = None
-    await td_send_midjoin_message(g)
+                    buttons=[_ctrl_row()], parse_mode="html")
+    if sent: g["join_msg_id"] = sent.id
     await asyncio.sleep(2)
     await td_next_turn(g)
 
@@ -1429,9 +1354,16 @@ async def td_next_turn(g):
     if g.get("turn_msg_id"):
         try: await _client.delete_messages(g["group_id"], g["turn_msg_id"])
         except Exception: pass
-    rows = _build_category_buttons(g)
-    rows.append([Button.inline("⏭ رد کردن نوبت", data=b"td_skip_turn")])
-    rows.append(_bottom_ctrl_row())
+    rows = []
+    for k, e, n2 in TD_CATEGORIES_ALL:
+        if k not in g["categories"]: continue
+        rows.append(Button.inline(f"{e} {n2}", data=f"td_pick:{k}".encode()))
+    # 2 columns for categories
+    cat_rows = []
+    for i in range(0, len(rows), 2): cat_rows.append(rows[i:i+2])
+    # add skip + control row
+    cat_rows.append([Button.inline("⏭ رد کردن نوبت", data=b"td_skip_turn")])
+    cat_rows.append(_ctrl_row())  # ← دکمه‌های شرکت + توقف
     total = g["timeout_sec"]; bar = time_bar_colored(total, total); tb = time_badge(total, total)
     text = (f"{E('magic','🎭')} <b>TRUTH or DARE</b> {E('magic','🎭')}\n{DIV}\n\n"
             f"{E('target','🎯')} <b>نوبت {h(p['name'])}</b>\n"
@@ -1443,24 +1375,15 @@ async def td_next_turn(g):
             f"  {E('bolt','⚡')} <b>جرعت</b>  <i>— چالش بامزه</i>\n"
             f"  {E('heart','💋')} <b>جرعت +18</b>  <i>— چالش جسورانه</i>\n\n"
             f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
-    sent = await safe_send(g["group_id"], text, buttons=rows, parse_mode="html")
+    sent = await safe_send(g["group_id"], text, buttons=cat_rows, parse_mode="html")
     if sent: g["turn_msg_id"] = sent.id
+    logger.info(f"TD: turn msg sent to {g['group_id']}, msg_id={sent.id if sent else 'FAIL'}")
     cur_task = asyncio.current_task()
     old_task = g.get("timeout_task")
     if old_task and old_task is not cur_task and not old_task.done():
         try: old_task.cancel()
         except Exception: pass
     g["timeout_task"] = asyncio.create_task(td_live_countdown(g, uid, total))
-
-
-def _build_category_buttons(g):
-    btns = []
-    for k, e, n2 in TD_CATEGORIES_ALL:
-        if k not in g["categories"]: continue
-        btns.append(Button.inline(f"{e} {n2}", data=f"td_pick:{k}".encode()))
-    rows = []
-    for i in range(0, len(btns), 2): rows.append(btns[i:i+2])
-    return rows
 
 
 async def td_live_countdown(g, uid, total):
@@ -1473,9 +1396,14 @@ async def td_live_countdown(g, uid, total):
                 await asyncio.sleep(0.5); continue
             bar = time_bar_colored(remaining, total); tb = time_badge(remaining, total)
             pct = int(100 * remaining / total) if total > 0 else 0
-            rows = _build_category_buttons(g)
-            rows.append([Button.inline("⏭ رد کردن نوبت", data=b"td_skip_turn")])
-            rows.append(_bottom_ctrl_row())
+            cat_btns = []
+            for k, e, n2 in TD_CATEGORIES_ALL:
+                if k not in g["categories"]: continue
+                cat_btns.append(Button.inline(f"{e} {n2}", data=f"td_pick:{k}".encode()))
+            cat_rows = []
+            for i in range(0, len(cat_btns), 2): cat_rows.append(cat_btns[i:i+2])
+            cat_rows.append([Button.inline("⏭ رد کردن نوبت", data=b"td_skip_turn")])
+            cat_rows.append(_ctrl_row())
             if remaining <= 3 and remaining > 0:
                 tw = f"{E('alert','🚨')} <b><i>زود باش! فقط {remaining} ثانیه!</i></b>"
             elif remaining == 0:
@@ -1494,7 +1422,7 @@ async def td_live_countdown(g, uid, total):
                     f"{E('info','ℹ️')} <i>فقط خودت کلیک کن</i>")
             if g.get("current_player") != uid or g.get("current_state") != "picking_choice": return
             if text != last_shown:
-                ok = await safe_edit_msg(gid, g["turn_msg_id"], text, buttons=rows)
+                ok = await safe_edit_msg(gid, g["turn_msg_id"], text, buttons=cat_rows)
                 if ok: last_shown = text
             if remaining == 0: break
             await asyncio.sleep(1)
@@ -1504,7 +1432,7 @@ async def td_live_countdown(g, uid, total):
                 await safe_send(g["group_id"],
                                 f"{E('hourglass','⏰')} <b>وقت {h(p['name'])} تموم شد!</b>\n"
                                 f"{E('info','ℹ️')} نوبت بعدی می‌ره...",
-                                buttons=[_bottom_ctrl_row()], parse_mode="html")
+                                buttons=[_ctrl_row()], parse_mode="html")
                 p["turns_done"] += 1
                 await asyncio.sleep(1.5); g["current_index"] += 1
                 await td_next_turn(g)
@@ -1527,7 +1455,7 @@ async def td_play(g, uid, kind):
     txt = get_td_from_bank(kind, g.get("used_texts", []))
     if not txt:
         await safe_send(gid, f"{E('cross','❌')} <b>بانک خالی است</b>",
-                        buttons=[_bottom_ctrl_row()], parse_mode="html")
+                        buttons=[_ctrl_row()], parse_mode="html")
         p["turns_done"] += 1
         await asyncio.sleep(2); g["current_index"] += 1; await td_next_turn(g); return
     g["used_texts"].append(txt)
@@ -1549,9 +1477,11 @@ async def td_play(g, uid, kind):
     btns = [
         [Button.inline("✅ جواب دادم — نفر بعدی", data=b"td_done")],
         [Button.inline("⏭ رد کردن نوبت", data=b"td_next_now")],
-        _bottom_ctrl_row(),
+        _ctrl_row(),
     ]
-    await safe_send(gid, result, buttons=btns, parse_mode="html")
+    sent = await safe_send(gid, result, buttons=btns, parse_mode="html")
+    if sent: g["join_msg_id"] = sent.id  # reuse for _find_td_game
+    logger.info(f"TD: challenge msg sent to {gid}, msg_id={sent.id if sent else 'FAIL'}")
     p["turns_done"] += 1
     g["current_state"] = "waiting_done"
     g["auto_next_task"] = asyncio.create_task(td_auto_next(g, uid))
@@ -1582,7 +1512,7 @@ async def td_skip_turn(g):
     await safe_send(g["group_id"],
                     f"{E('skip','⏭')} <b>نوبت {h(pn)} رد شد</b>\n"
                     f"{E('info','ℹ️')} <i>در حال رفتن به نوبت بعدی...</i>",
-                    buttons=[_bottom_ctrl_row()], parse_mode="html")
+                    buttons=[_ctrl_row()], parse_mode="html")
     if p: p["turns_done"] += 1
     await asyncio.sleep(1.5); g["current_index"] += 1; await td_next_turn(g)
 
@@ -1602,7 +1532,7 @@ async def td_stop_game(g, by_admin_id=None):
     g["turn_msg_id"] = None
     c = len(g["players"])
     btns = [
-        _bottom_ctrl_row(),
+        _ctrl_row(),
         [Button.inline("▶️ شروع مجدد", data=b"td_restart_confirm"),
          Button.inline("🗑 حذف کامل", data=b"td_destroy")],
     ]
@@ -1614,7 +1544,6 @@ async def td_stop_game(g, by_admin_id=None):
                         f"{E('rocket','🚀')} ادمین می‌تونه مجدد شروع کنه یا حذف کنه",
                         buttons=btns, parse_mode="html")
     except Exception as e: logger.exception(f"stop announce: {e}")
-    await td_refresh_midjoin(g)
 
 
 async def td_destroy_game(g):
@@ -1623,7 +1552,7 @@ async def td_destroy_game(g):
     if g.get("auto_next_task") and not g["auto_next_task"].done():
         try: g["auto_next_task"].cancel()
         except Exception: pass
-    for mid_key in ("turn_msg_id", "mid_join_msg_id", "join_msg_id"):
+    for mid_key in ("turn_msg_id", "join_msg_id"):
         mid = g.get(mid_key)
         if mid:
             try: await _client.delete_messages(g["group_id"], mid)
@@ -1652,7 +1581,7 @@ async def td_finish(g):
         lines.append(f"  {E('point','👉')} <b>{h(p['name'])}</b> — <code>{p['turns_done']}</code> نوبت")
     lines.append(f"\n{E('party','🎉')} <b>ممنون که بازی کردید!</b>")
     btns = [
-        _bottom_ctrl_row(),
+        _ctrl_row(),
         [Button.inline("▶️ شروع مجدد", data=b"td_restart_confirm"),
          Button.inline("🗑 حذف کامل", data=b"td_destroy")],
     ]
@@ -1661,122 +1590,6 @@ async def td_finish(g):
         if p["turns_done"] > 0:
             try: _add_points(uid, p["name"], p["turns_done"] * 3, joined=True)
             except Exception: pass
-    await td_refresh_midjoin(g)
-
-
-# ═══════════════════════════════════════════════════════════
-# 🛂 ADMIN APPROVAL — JOIN REQUEST
-# ═══════════════════════════════════════════════════════════
-async def td_send_join_request_to_admin(g, uid, name, username):
-    """Send DM to game admin asking for approval."""
-    admin_id = g.get("admin_id")
-    if not admin_id:
-        return False
-    try:
-        u_line = f"  📎 <code>@{h(username)}</code>" if username else ""
-        text = (
-            f"🖐 {E('user','👤')} <b>درخواست پیوستن به بازی</b>\n"
-            f"{DIV}\n\n"
-            f"{E('user','👤')} <b>{h(name)}</b>\n"
-            f"  {E('id','🆔')} <code>{uid}</code>\n"
-            f"{u_line}\n\n"
-            f"{E('info','ℹ️')} توی گروه با شناسه:\n"
-            f"  <code>{g['group_id']}</code>\n\n"
-            f"{E('rocket','🚀')} <b>تایید می‌کنی؟</b>"
-        )
-        btns = [[
-            Button.inline("✅ تایید", data=f"td_approve:{uid}".encode()),
-            Button.inline("❌ رد", data=f"td_reject:{uid}".encode()),
-        ]]
-        await safe_send(admin_id, text, buttons=btns, parse_mode="html")
-        return True
-    except Exception as e:
-        logger.exception(f"send request to admin: {e}")
-        return False
-
-
-async def td_process_approve(event, admin_uid, target_uid):
-    """Admin clicked approve — add user to game at random position."""
-    g = _find_game_for_admin(admin_uid, target_uid)
-    if not g:
-        await event.answer("❌ درخواست پیدا نشد", alert=True); return
-    pending = g["pending_joins"].pop(target_uid, None)
-    if not pending:
-        await event.answer("❌ درخواست منقضی شده", alert=True); return
-    if target_uid in g["players"]:
-        await event.answer("⚠️ کاربر الان توی بازیه", alert=True)
-        try:
-            await safe_edit(event,
-                f"⚠️ {E('info','ℹ️')} <b>کاربر از قبل توی بازی بود</b>",
-                parse_mode="html", buttons=None)
-        except Exception: pass
-        return
-
-    # Add to players
-    g["players"][target_uid] = {
-        "name": pending["name"],
-        "username": pending.get("username"),
-        "turns_done": 0,
-        "joined_at": now_iso()
-    }
-
-    # Insert into order at random position after current player
-    if target_uid not in g["order"]:
-        n = len(g["order"])
-        if g.get("state") == "playing":
-            cur_idx = g.get("current_index", 0)
-            min_pos = min(cur_idx + 1, n)
-            pos = random.randint(min_pos, n) if min_pos <= n else n
-        else:
-            pos = n
-        g["order"].insert(pos, target_uid)
-
-    await event.answer("✅ تایید شد!")
-    try:
-        await safe_edit(event,
-            f"✅ {E('check','✅')} <b>درخواست تایید شد</b>\n{DIV}\n\n"
-            f"{E('user','👤')} <b>{h(pending['name'])}</b> به بازی اضافه شد\n\n"
-            f"{E('info','ℹ️')} تعداد بازیکنان: <code>{len(g['players'])}</code>",
-            parse_mode="html", buttons=None)
-    except Exception: pass
-
-    # Announce in group
-    try:
-        await safe_send(g["group_id"],
-            f"🖐 {E('sparkle','✨')} <b>{h(pending['name'])} به بازی پیوست!</b> {E('sparkle','✨')}\n"
-            f"{E('user','👤')} تعداد بازیکنان: <code>{len(g['players'])}</code>\n"
-            f"{E('info','ℹ️')} به صورت <b>تصادفی</b> توی نوبت‌ها قرار گرفت",
-            buttons=[_bottom_ctrl_row()], parse_mode="html")
-    except Exception: pass
-    await td_refresh_midjoin(g)
-
-
-async def td_process_reject(event, admin_uid, target_uid):
-    """Admin clicked reject — notify user."""
-    g = _find_game_for_admin(admin_uid, target_uid)
-    if not g:
-        await event.answer("❌ درخواست پیدا نشد", alert=True); return
-    pending = g["pending_joins"].pop(target_uid, None)
-    if not pending:
-        await event.answer("❌ درخواست منقضی شده", alert=True); return
-
-    await event.answer("❌ رد شد")
-    try:
-        await safe_edit(event,
-            f"❌ {E('cross','❌')} <b>درخواست رد شد</b>\n{DIV}\n\n"
-            f"{E('user','👤')} {h(pending['name'])}\n\n"
-            f"{E('info','ℹ️')} کاربر مطلع شد",
-            parse_mode="html", buttons=None)
-    except Exception: pass
-
-    # Notify user in DM
-    try:
-        await safe_send(target_uid,
-            f"❌ {E('warning','⚠️')} <b>درخواستت رد شد</b>\n{DIV}\n\n"
-            f"{E('info','ℹ️')} ادمین بازی درخواستت رو قبول نکرد.\n\n"
-            f"{E('heart','💖')} <i>شاید دفعه بعد!</i>",
-            parse_mode="html")
-    except Exception: pass
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1832,7 +1645,6 @@ async def on_callback(event):
             return
         uid = event.sender_id
 
-        # ═══ Setup menus ═══
         if data == "td_setup":
             g = TD_SETUP_GAMES.get(uid)
             if not g: await event.answer("منقضی", alert=True); return
@@ -1898,64 +1710,47 @@ async def on_callback(event):
             except Exception: pass
             return
 
-        # ═══ 🛂 Admin approval: approve/reject join requests ═══
-        if data.startswith("td_approve:"):
-            try: target_uid = int(data.split(":", 1)[1])
-            except Exception: await event.answer("خطا", alert=True); return
-            if not _is_admin(uid):
-                await event.answer("⛔ فقط ادمین!", alert=True); return
-            await td_process_approve(event, uid, target_uid); return
-
-        if data.startswith("td_reject:"):
-            try: target_uid = int(data.split(":", 1)[1])
-            except Exception: await event.answer("خطا", alert=True); return
-            if not _is_admin(uid):
-                await event.answer("⛔ فقط ادمین!", alert=True); return
-            await td_process_reject(event, uid, target_uid); return
-
-        # ═══ 🖐 Join request (DM to admin) ═══
+        # ═══ 🖐 INSTANT MID-JOIN ═══
         if data == "td_midjoin":
             g = _find_td_game(event)
-            if not g: await event.answer("❌ بازی فعال نیست", alert=True); return
-            if g.get("state") not in ("playing", "waiting", "stopped"):
-                await event.answer("⏳ بازی فعال نیست", alert=True); return
+            if not g:
+                await event.answer("❌ بازی فعال نیست", alert=True); return
             if uid in g["players"]:
                 await event.answer("⚠️ تو قبلاً توی بازی هستی!", alert=True); return
-            if uid in g.get("pending_joins", {}):
-                await event.answer("⏳ درخواستت در انتظار تایید ادمینه!", alert=True); return
-
-            # Get user info
             try:
                 s = await event.get_sender()
                 name = user_name(s); uu = getattr(s, "username", None)
             except Exception: name = str(uid); uu = None
-
-            # Check game has admin
-            if not g.get("admin_id"):
-                await event.answer("❌ ادمین بازی پیدا نشد", alert=True); return
-
-            # Store pending
-            if "pending_joins" not in g: g["pending_joins"] = {}
-            g["pending_joins"][uid] = {
-                "name": name, "username": uu, "requested_at": now_iso()
-            }
-
-            # Send DM to admin
-            sent_ok = await td_send_join_request_to_admin(g, uid, name, uu)
-            if sent_ok:
-                await event.answer("✅ درخواستت به ادمین ارسال شد!")
-            else:
-                # rollback
-                g["pending_joins"].pop(uid, None)
-                await event.answer("❌ نتونستم به ادمین پیام بدم", alert=True)
+            g["players"][uid] = {"name": name, "username": uu, "turns_done": 0,
+                                  "joined_at": now_iso()}
+            # اگر بازی در حال اجراست، به آخر صف اضافه کن
+            if uid not in g["order"]:
+                if g.get("state") == "playing":
+                    n = len(g["order"])
+                    cur_idx = g.get("current_index", 0)
+                    min_pos = min(cur_idx + 1, n)
+                    pos = random.randint(min_pos, n) if min_pos <= n else n
+                    g["order"].insert(pos, uid)
+                else:
+                    g["order"].append(uid)
+            await event.answer(f"🎉 {name}، پیوستی!")
+            try:
+                await safe_send(g["group_id"],
+                    f"🖐 {E('sparkle','✨')} <b>{h(name)} به بازی پیوست!</b> {E('sparkle','✨')}\n"
+                    f"{E('user','👤')} تعداد بازیکنان: <code>{len(g['players'])}</code>\n"
+                    f"{E('info','ℹ️')} به صورت <b>تصادفی</b> توی نوبت‌ها قرار گرفت",
+                    buttons=[_ctrl_row()], parse_mode="html")
+            except Exception: pass
+            await td_refresh_join(g)
             return
 
-        # ═══ Game control (admin) ═══
+        # ═══ 🛑 STOP ═══
         if data == "td_stop":
             g = _find_td_game(event)
             if not g or g.get("state") not in ("playing", "waiting"):
                 await event.answer("❌ بازی فعال نیست", alert=True); return
-            if not _is_admin(uid): await event.answer("⛔ فقط ادمین!", alert=True); return
+            if not _is_admin(uid):
+                await event.answer("⛔ فقط ادمین!", alert=True); return
             await event.answer("🛑 در حال توقف...")
             await td_stop_game(g, by_admin_id=uid); return
 
@@ -1992,8 +1787,7 @@ async def on_callback(event):
 
         if data == "td_restart_no":
             await event.answer("❌")
-            try:
-                await safe_edit(event, f"❌ لغو شد", parse_mode="html", buttons=None)
+            try: await safe_edit(event, f"❌ لغو شد", parse_mode="html", buttons=None)
             except Exception: pass
             return
 
@@ -2004,7 +1798,6 @@ async def on_callback(event):
             await event.answer("🗑 حذف...")
             await td_destroy_game(g); return
 
-        # ═══ Start (waiting) ═══
         if data == "td_start":
             g = _find_td_game(event)
             if not g or g.get("state") != "waiting": await event.answer("❌", alert=True); return
@@ -2018,7 +1811,6 @@ async def on_callback(event):
             except Exception: pass
             asyncio.create_task(td_start_game(g)); return
 
-        # ═══ Play actions ═══
         if data.startswith("td_pick:"):
             try: kind = data.split(":", 1)[1]
             except Exception: await event.answer("خطا", alert=True); return
@@ -2040,7 +1832,7 @@ async def on_callback(event):
             await safe_send(g["group_id"],
                             f"{E('check','✅')} <b>ثبت شد!</b>\n"
                             f"{E('rocket','🚀')} <i>در حال رفتن به نفر بعدی...</i>",
-                            buttons=[_bottom_ctrl_row()], parse_mode="html")
+                            buttons=[_ctrl_row()], parse_mode="html")
             asyncio.create_task(td_next_turn(g)); return
         if data == "td_skip_turn":
             g = _find_td_game(event)
@@ -2083,5 +1875,5 @@ def init_td(client, db, is_admin_fn, add_points_fn):
                              events.NewMessage(func=_td_trigger_filter))
     client.add_event_handler(on_callback,
                              events.CallbackQuery(pattern=r"^td_"))
-    logger.info("🎭 Truth-or-Dare v3 initialized (join-in-every-message + admin approval)")
+    logger.info("🎭 Truth-or-Dare v3.1 — buttons in EVERY message")
     return {"on_group_message": on_group_message, "on_callback": on_callback}
