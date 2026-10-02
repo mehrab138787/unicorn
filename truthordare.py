@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-🎭 TRUTH OR DARE — UNICORN EDITION v3.1
+🎭 TRUTH OR DARE — UNICORN EDITION v3.2
 + 🛑 Stop button in EVERY message
 + 🖐 Join button in EVERY message (instant, no approval)
 + ▶️ Restart after stop
++ 🔧 FIX: safe_edit_msg falls back to strip_premium on DocumentInvalidError
 """
 
 import re, random, asyncio, logging
@@ -110,7 +111,10 @@ _add_points = None
 async def safe_send(peer, text, **kw):
     try: return await _client.send_message(peer, text, **kw)
     except Exception as ex:
-        if _emoji_err(ex): return await _client.send_message(peer, strip_premium(text), **kw)
+        if _emoji_err(ex):
+            try: return await _client.send_message(peer, strip_premium(text), **kw)
+            except Exception as ex2:
+                logger.error(f"safe_send fail: {ex2}"); raise
         raise
 
 
@@ -124,27 +128,44 @@ async def safe_edit(event, text, **kw):
         raise
 
 
-async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=3):
+# ═══════════════════════════════════════════════════════════
+# 🔧 FIXED: safe_edit_msg with premium-emoji fallback
+# ═══════════════════════════════════════════════════════════
+async def safe_edit_msg(chat_id, msg_id, text, buttons=None, max_retry=2):
     for attempt in range(max_retry):
         try:
-            await _client.edit_message(chat_id, msg_id, text=text, buttons=buttons, parse_mode="html")
+            await _client.edit_message(chat_id, msg_id, text=text,
+                                        buttons=buttons, parse_mode="html")
             return True
-        except MessageNotModifiedError: return True
+        except MessageNotModifiedError:
+            return True
         except FloodWaitError as fwe:
             wait = fwe.seconds
             logger.warning(f"🚦 flood {wait}s (try {attempt+1})")
             if wait > 10: return False
             await asyncio.sleep(wait + 1)
         except Exception as e:
+            err_s = str(e).lower()
+            # 🔥 FIX: premium emoji invalid → retry WITHOUT premium
+            if "document" in err_s or ("invalid" in err_s and "inline" in err_s):
+                logger.info(f"🔁 stripping premium emojis for edit (msg {msg_id})")
+                try:
+                    await _client.edit_message(chat_id, msg_id,
+                                                text=strip_premium(text),
+                                                buttons=buttons, parse_mode="html")
+                    return True
+                except MessageNotModifiedError:
+                    return True
+                except Exception as e2:
+                    logger.warning(f"edit plain also failed: {str(e2)[:80]}")
+                    return False
+            if "message to edit not found" in err_s:
+                return False
             logger.warning(f"edit try{attempt+1}: {type(e).__name__}: {str(e)[:80]}")
-            if "message to edit not found" in str(e).lower(): return False
             await asyncio.sleep(0.5)
     return False
 
 
-# ═══════════════════════════════════════════════════════════
-# CONFIG
-# ═══════════════════════════════════════════════════════════
 TD_CATEGORIES_ALL = [
     ("truth", "🎭", "حقیقت"), ("truth18", "🔥", "حقیقت +18"),
     ("dare", "⚡", "جرعت"), ("dare18", "💋", "جرعت +18"),
@@ -156,20 +177,13 @@ TD_SETUP_GAMES = {}
 TD_ACTIVE_GAMES = {}
 
 
-# ═══════════════════════════════════════════════════════════
-# 🎛 UNIVERSAL CONTROL ROW — این همون دکمه‌هاییه که همه‌جا میان
-# ═══════════════════════════════════════════════════════════
 def _ctrl_row():
-    """دو دکمه اصلی: شرکت + توقف."""
     return [
         Button.inline("🖐 شرکت می‌کنم", data=b"td_midjoin"),
         Button.inline("🛑 توقف بازی", data=b"td_stop"),
     ]
 
 
-# ═══════════════════════════════════════════════════════════
-# 🎭 TD_BANK
-# ═══════════════════════════════════════════════════════════
 TD_BANK = {
     "truth": [
         "آخرین باری که از ته دل گریه کردی کی بود و چرا؟",
@@ -1139,9 +1153,6 @@ def decorate_td_text(kind, text):
     return f"{E(a_k, a_f)}  {text}  {E(b_k, b_f)}"
 
 
-# ═══════════════════════════════════════════════════════════
-# SETUP / RENDER
-# ═══════════════════════════════════════════════════════════
 def create_td_setup(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
          "admin_id": aid, "group_id": gid,
@@ -1176,7 +1187,7 @@ def _find_td_game(event):
 
 
 def render_td_welcome(g):
-    return (f"{E('magic','🎭')} <b>جرعت یا حقیقت — UNICORN v3.1</b> {E('magic','🎭')}\n{DIV}\n\n"
+    return (f"{E('magic','🎭')} <b>جرعت یا حقیقت — UNICORN v3.2</b> {E('magic','🎭')}\n{DIV}\n\n"
             f"{E('sparkle','✨')} <b>سلام ادمین عزیز!</b> {E('wave','👋')}\n\n"
             f"{E('info','ℹ️')} <b>قابلیت‌ها:</b>\n"
             f"  🖐 دکمه شرکت در همه‌ی پیام‌ها\n"
@@ -1295,9 +1306,6 @@ async def td_refresh_join(g):
     except Exception as e: logger.warning(f"td refresh: {e}")
 
 
-# ═══════════════════════════════════════════════════════════
-# GAME FLOW
-# ═══════════════════════════════════════════════════════════
 async def td_start_game(g):
     g["state"] = "playing"
     g["started_at"] = now_iso()
@@ -1306,7 +1314,6 @@ async def td_start_game(g):
     for uid in g["order"]:
         g["players"][uid]["turns_done"] = 0
     pl = "\n".join([f"  {E('point','👉')} <b>{h(g['players'][uid]['name'])}</b>" for uid in order])
-    # بازی شروع شد + دکمه‌های کنترلی
     sent = await safe_send(g["group_id"],
                     f"{E('party','🎉')} <b>بازی شروع شد!</b> {E('party','🎉')}\n{DIV}\n\n"
                     f"🎲 <b>ترتیب تصادفی بازیکنان:</b>\n{pl}\n\n"
@@ -1358,12 +1365,10 @@ async def td_next_turn(g):
     for k, e, n2 in TD_CATEGORIES_ALL:
         if k not in g["categories"]: continue
         rows.append(Button.inline(f"{e} {n2}", data=f"td_pick:{k}".encode()))
-    # 2 columns for categories
     cat_rows = []
     for i in range(0, len(rows), 2): cat_rows.append(rows[i:i+2])
-    # add skip + control row
     cat_rows.append([Button.inline("⏭ رد کردن نوبت", data=b"td_skip_turn")])
-    cat_rows.append(_ctrl_row())  # ← دکمه‌های شرکت + توقف
+    cat_rows.append(_ctrl_row())
     total = g["timeout_sec"]; bar = time_bar_colored(total, total); tb = time_badge(total, total)
     text = (f"{E('magic','🎭')} <b>TRUTH or DARE</b> {E('magic','🎭')}\n{DIV}\n\n"
             f"{E('target','🎯')} <b>نوبت {h(p['name'])}</b>\n"
@@ -1480,7 +1485,7 @@ async def td_play(g, uid, kind):
         _ctrl_row(),
     ]
     sent = await safe_send(gid, result, buttons=btns, parse_mode="html")
-    if sent: g["join_msg_id"] = sent.id  # reuse for _find_td_game
+    if sent: g["join_msg_id"] = sent.id
     logger.info(f"TD: challenge msg sent to {gid}, msg_id={sent.id if sent else 'FAIL'}")
     p["turns_done"] += 1
     g["current_state"] = "waiting_done"
@@ -1592,9 +1597,6 @@ async def td_finish(g):
             except Exception: pass
 
 
-# ═══════════════════════════════════════════════════════════
-# HANDLERS
-# ═══════════════════════════════════════════════════════════
 TD_TRIGGERS = ("جرعت", "حقیقت", "جرعت حقیقت", "جرعت یا حقیقت")
 
 
@@ -1710,7 +1712,6 @@ async def on_callback(event):
             except Exception: pass
             return
 
-        # ═══ 🖐 INSTANT MID-JOIN ═══
         if data == "td_midjoin":
             g = _find_td_game(event)
             if not g:
@@ -1723,7 +1724,6 @@ async def on_callback(event):
             except Exception: name = str(uid); uu = None
             g["players"][uid] = {"name": name, "username": uu, "turns_done": 0,
                                   "joined_at": now_iso()}
-            # اگر بازی در حال اجراست، به آخر صف اضافه کن
             if uid not in g["order"]:
                 if g.get("state") == "playing":
                     n = len(g["order"])
@@ -1744,7 +1744,6 @@ async def on_callback(event):
             await td_refresh_join(g)
             return
 
-        # ═══ 🛑 STOP ═══
         if data == "td_stop":
             g = _find_td_game(event)
             if not g or g.get("state") not in ("playing", "waiting"):
@@ -1861,9 +1860,6 @@ async def td_next_task_safe(g):
     except Exception as e: logger.exception(f"td_next: {e}")
 
 
-# ═══════════════════════════════════════════════════════════
-# INIT
-# ═══════════════════════════════════════════════════════════
 def init_td(client, db, is_admin_fn, add_points_fn):
     global _client, _db, _is_admin, _add_points
     _client = client
@@ -1875,5 +1871,5 @@ def init_td(client, db, is_admin_fn, add_points_fn):
                              events.NewMessage(func=_td_trigger_filter))
     client.add_event_handler(on_callback,
                              events.CallbackQuery(pattern=r"^td_"))
-    logger.info("🎭 Truth-or-Dare v3.1 — buttons in EVERY message")
+    logger.info("🎭 Truth-or-Dare v3.2 — safe_edit_msg fallback fix")
     return {"on_group_message": on_group_message, "on_callback": on_callback}
