@@ -5,7 +5,8 @@
 ⚔️ Strategic Battle (Light) · 🔫 Weapon Tiers · 👑 Iranian Heroes
 🎁 UNICORN Code · 🛡️ Default Soldier · 🎉 Update Reward
 ✏️ Rename babies · 🎀 Baby answers when called!
-🎀 NEW: Baby answers family questions (mom/dad/siblings) — only IDs, never names!
+🎀 NEW: Baby answers family questions — ONLY to parents!
+🎯 Family reply shows asker's CURRENT spouse (not registered parents)
 """
 
 import re, random, asyncio, logging, time, json
@@ -446,7 +447,7 @@ class UnicornGame:
         self._combo = {}
         self._last_breed_cache = {}
         self._pending_renames = {}
-        # 🎀 NEW: baby call cooldown & AI
+        # 🎀 baby call cooldown & AI
         self._baby_call_cd = {}       # {(baby_id, chat_id): ts}
         # 🎀 NEW: map sent messages -> baby_id so we can reply to family questions
         self._baby_reply_msgs = {}    # {(chat_id, msg_id): baby_id}
@@ -590,7 +591,7 @@ class UnicornGame:
         c.execute("""CREATE INDEX IF NOT EXISTS idx_uni_points ON unicorns(points DESC)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_eggs_lookup ON unicorn_eggs(user_id, partner_id, hatched_at)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_babies_lookup ON unicorn_babies(user_id, partner_id)""")
-        logger.info("🦄 Unicorn tables ready (v13 — baby call + family reply)")
+        logger.info("🦄 Unicorn tables ready (v13 — parents-only baby reply)")
         try:
             self._check_update_reward()
         except Exception as e:
@@ -906,8 +907,16 @@ class UnicornGame:
             logger.warning(f"fetch babies: {e}")
             return []
 
-    def _find_babies_in_text(self, raw_text):
-        """Return list of baby dicts whose clean name matches a word in text."""
+    def _is_parent_of_baby(self, baby, uid):
+        """Check whether uid is one of this baby's parents."""
+        try:
+            return uid in (baby.get("user_id") or 0, baby.get("partner_id") or 0)
+        except Exception:
+            return False
+
+    def _find_babies_in_text(self, raw_text, caller_id):
+        """Return list of baby dicts whose clean name matches a word in text
+        AND caller_id is one of their parents."""
         if not raw_text or len(raw_text) > BABY_CALL_MAX_MSG_LEN:
             return []
         # clean the incoming text
@@ -930,6 +939,9 @@ class UnicornGame:
         for b in babies:
             bid = b["id"]
             if bid in seen_ids:
+                continue
+            # 🎯 ONLY match if caller is a parent of this baby
+            if not self._is_parent_of_baby(b, caller_id):
                 continue
             clean = _strip_emoji(b.get("name") or "").lower()
             if not clean:
@@ -958,7 +970,7 @@ class UnicornGame:
             self._baby_call_cd = {k: v for k, v in self._baby_call_cd.items() if v > cutoff}
         return True
 
-    # ═══════════ 🎀 FAMILY REPLY HELPERS (NEW) ═══════════
+    # ═══════════ 🎀 FAMILY REPLY HELPERS ═══════════
     def _register_baby_reply(self, chat_id, msg_id, baby_id):
         """Remember which baby sent this message, so we can reply later."""
         if not msg_id: return
@@ -1092,7 +1104,7 @@ class UnicornGame:
         return random.choice(BABY_FALLBACK_RESPONSES)
 
     async def _handle_baby_call(self, event, raw_text):
-        """Check if message calls any baby; if so, reply cutely."""
+        """Check if message calls any baby; ONLY reply if sender is a parent."""
         if not BABY_CALL_ENABLED:
             return False
         try:
@@ -1109,7 +1121,9 @@ class UnicornGame:
                        "بیبی هام", "بچه هام", "بچه‌هام", "بچه ها"):
                 return False
 
-            matches = self._find_babies_in_text(raw_text)
+            caller_id = event.sender_id
+            # 🎯 ONLY match babies whose parent is the caller
+            matches = self._find_babies_in_text(raw_text, caller_id)
             if not matches:
                 return False
 
@@ -1154,9 +1168,10 @@ class UnicornGame:
             logger.exception(f"baby_call: {e}")
             return False
 
-    # ═══════════ 🎀 FAMILY QUESTION HANDLER (NEW) ═══════════
+    # ═══════════ 🎀 FAMILY QUESTION HANDLER ═══════════
     async def _handle_baby_family_reply(self, event, raw_text):
-        """If user replies to a baby's message and asks about family — answer cutely."""
+        """If a PARENT replies to a baby's message and asks about family —
+        answer cutely. Parents-only rule enforced."""
         try:
             if not event.reply_to_msg_id: return False
             if not raw_text or len(raw_text) > BABY_CALL_MAX_MSG_LEN: return False
@@ -1165,6 +1180,11 @@ class UnicornGame:
             if not baby_id: return False
             baby = self._get_baby_full(baby_id)
             if not baby: return False
+
+            # 🎯 ONLY parents can ask
+            asker_id = event.sender_id
+            if not self._is_parent_of_baby(baby, asker_id):
+                return False
 
             norm = normalize_fa(raw_text.lower().strip())
             qtype = self._classify_family_question(norm)
@@ -1185,17 +1205,30 @@ class UnicornGame:
                     reply = f"{baby_disp}: {reply}"
             else:
                 # ── mom or dad question ──
+                asker = self.get_unicorn(asker_id)
+                asker_spouse = (asker.get("married_to") or 0) if asker else 0
+
                 user_id = baby.get("user_id") or 0
                 partner_id = baby.get("partner_id") or 0
 
                 if qtype == "mom":
-                    target = user_id or partner_id
                     label = "مامانی"
                     emo = "💖👶"
                 else:  # dad
-                    target = partner_id or user_id
                     label = "بابایی"
                     emo = "💙👶"
+
+                # 🎯 NEW LOGIC:
+                # if the asker is a parent of the baby AND has a current spouse
+                # → show asker's CURRENT spouse (not the registered parents)
+                asker_is_parent = (asker_id == user_id) or (asker_id == partner_id)
+
+                if asker_is_parent and asker_spouse:
+                    target = asker_spouse
+                elif qtype == "mom":
+                    target = user_id or partner_id
+                else:  # dad
+                    target = partner_id or user_id
 
                 if not target:
                     reply = random.choice(BABY_FAMILY_UNKNOWN)
@@ -1339,6 +1372,7 @@ class UnicornGame:
             norm_raw = normalize_fa(raw)
 
             # 🎀 NEW: baby call / family question (BEFORE all other handlers)
+            # 🎯 ONLY parents get replies (checked inside each handler)
             if BABY_CALL_ENABLED:
                 # ۱) if reply to a baby message + family question
                 try:
@@ -2546,7 +2580,7 @@ class UnicornGame:
                     lines.append(f"🐣 <b>بیبی‌ها ({len(babies)}):</b>")
                     lines.append(f"💎 درآمد: <code>{fmt_num(income)}/روز</code>")
                     lines.append(f"{PE('info','ℹ️')} <i>برای تغییر اسم، روی دکمه ✏️ بزن</i>")
-                    lines.append(f"🎀 <i>وقتی اسمشون رو صدا بزنی، جواب می‌دن!</i>")
+                    lines.append(f"🎀 <i>وقتی اسمشون رو صدا بزنی، جواب می‌دن! (فقط والدین)</i>")
                     lines.append(f"🎀 <i>روی پیامشون ریپلای کن و بپرس مامان/بابات کیه!</i>")
                     lines.append("")
                     for b in babies[:8]:
@@ -2808,8 +2842,8 @@ class UnicornGame:
             f"💍 <code>ازدواج</code> · 🥚 <code>تخم</code>\n"
             f"🐣 <code>بیبی هام</code> · 💔 <code>طلاق</code>\n"
             f"✏️ <b>تغییر اسم بیبی:</b> از پنل بیبی‌ها، دکمه ✏️\n"
-            f"🎀 <b>جواب دادن بیبی:</b> اسمش رو توی گروه بنویس!\n"
-            f"🎀 <b>سوال خانوادگی:</b> روی پیام بیبی ریپلای کن و بپرس مامان/بابات کیه! 👶\n"
+            f"🎀 <b>جواب دادن بیبی:</b> فقط والدین اسمش رو صدا بزنن!\n"
+            f"🎀 <b>سوال خانوادگی:</b> والدین روی پیام بیبی ریپلای کنن و بپرسن مامان/بابات کیه! 👶\n"
             f"{DIV2}\n"
             f"🦄 کد <code>UNICORN</code> — ۱۵۰K (یک‌بار!)\n"
             f"{DIV2}\n"
@@ -3235,5 +3269,5 @@ def init_unicorn(client, db, groq_key="", ai_models=None):
     _game.setup()
     _game.register_handlers()
     _game.start_ticker()
-    logger.info("🦄 Unicorn module initialized (v13 — baby call + family reply)!")
+    logger.info("🦄 Unicorn module initialized (v13 — parents-only baby reply)!")
     return _game
