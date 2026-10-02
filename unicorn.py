@@ -5,6 +5,7 @@
 ⚔️ Strategic Battle (Light) · 🔫 Weapon Tiers · 👑 Iranian Heroes
 🎁 UNICORN Code · 🛡️ Default Soldier · 🎉 Update Reward
 ✏️ Rename babies · 🎀 Baby answers when called!
+🎀 NEW: Baby answers family questions (mom/dad/siblings) — only IDs, never names!
 """
 
 import re, random, asyncio, logging, time, json
@@ -62,6 +63,26 @@ BABY_FALLBACK_RESPONSES = [
     "چیه؟ بخورمت مامان 🍼😘",
     "بله؟ اینجام مامانی 🦄💕",
     "جانم؟ دل من لرزید 🥺✨",
+]
+
+# 🎀 NEW: Family question fallbacks
+BABY_FAMILY_ONLY_CHILD = [
+    "من تنهام مامانی 🥺💕",
+    "من فقط خودمم 🥺✨ خواهر برادر ندارم",
+    "تنها تنهام مامانی 💔🌸",
+    "خواهر و برادر ندارم، فقط شمام 🥺💖",
+    "من تک‌فرزندم مامانی 🍼✨",
+    "فقط منم مامانی، کسی رو ندارم 🥺💗",
+]
+BABY_FAMILY_HAS_SIBLINGS = [
+    "ما {n} تاییم 🍼✨",
+    "یه عالمه خواهر برادر دارم 🦄💖",
+    "{n} تا همشیر دارم مامانی 🌸💫",
+    "من {sib} تا خواهر و برادر دارم 🥺💕",
+]
+BABY_FAMILY_UNKNOWN = [
+    "نمی‌دونم مامانی 🥺✨",
+    "هیچ‌کس رو ندارم 💔🥺",
 ]
 
 COMBO_WINDOW_SEC = 30
@@ -427,6 +448,8 @@ class UnicornGame:
         self._pending_renames = {}
         # 🎀 NEW: baby call cooldown & AI
         self._baby_call_cd = {}       # {(baby_id, chat_id): ts}
+        # 🎀 NEW: map sent messages -> baby_id so we can reply to family questions
+        self._baby_reply_msgs = {}    # {(chat_id, msg_id): baby_id}
         self.groq_key = (groq_key or "").strip()
         self.ai_models = ai_models or BABY_CALL_AI_MODELS
 
@@ -567,7 +590,7 @@ class UnicornGame:
         c.execute("""CREATE INDEX IF NOT EXISTS idx_uni_points ON unicorns(points DESC)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_eggs_lookup ON unicorn_eggs(user_id, partner_id, hatched_at)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_babies_lookup ON unicorn_babies(user_id, partner_id)""")
-        logger.info("🦄 Unicorn tables ready (v13 — baby call)")
+        logger.info("🦄 Unicorn tables ready (v13 — baby call + family reply)")
         try:
             self._check_update_reward()
         except Exception as e:
@@ -935,6 +958,67 @@ class UnicornGame:
             self._baby_call_cd = {k: v for k, v in self._baby_call_cd.items() if v > cutoff}
         return True
 
+    # ═══════════ 🎀 FAMILY REPLY HELPERS (NEW) ═══════════
+    def _register_baby_reply(self, chat_id, msg_id, baby_id):
+        """Remember which baby sent this message, so we can reply later."""
+        if not msg_id: return
+        self._baby_reply_msgs[(chat_id, msg_id)] = baby_id
+        # light cleanup
+        if len(self._baby_reply_msgs) > 400:
+            items = list(self._baby_reply_msgs.items())
+            self._baby_reply_msgs = dict(items[-250:])
+
+    def _find_baby_id_by_reply(self, chat_id, msg_id):
+        return self._baby_reply_msgs.get((chat_id, msg_id))
+
+    def _get_baby_full(self, baby_id):
+        try:
+            c = self._c()
+            c.execute("SELECT * FROM unicorn_babies WHERE id=%s", (baby_id,))
+            r = c.fetchone()
+            return dict(r) if r else None
+        except Exception as e:
+            logger.warning(f"get_baby_full: {e}")
+            return None
+
+    def _count_siblings(self, baby):
+        """How many siblings does this baby have (excluding itself)."""
+        try:
+            c = self._c()
+            c.execute("""SELECT COUNT(*) AS n FROM unicorn_babies
+                WHERE id != %s AND (
+                    (user_id=%s AND partner_id=%s) OR
+                    (user_id=%s AND partner_id=%s)
+                )""",
+                (baby["id"], baby["user_id"], baby["partner_id"],
+                 baby["partner_id"], baby["user_id"]))
+            return int(c.fetchone()["n"] or 0)
+        except Exception:
+            return 0
+
+    def _classify_family_question(self, norm_text):
+        """Detect question type: 'mom' | 'dad' | 'sibling' | None."""
+        has_sib = any(k in norm_text for k in
+                      ("خواهر", "برادر", "داداش", "ابجی", "آبجی", "همشیر", "هم شیر"))
+        has_mom = any(k in norm_text for k in
+                      ("مامان", "مادر", "مامانی", "ماما", "مامی"))
+        has_dad = any(k in norm_text for k in
+                      ("بابا", "پدر", "بابایی", "بابای", "بابام"))
+
+        if not (has_sib or has_mom or has_dad):
+            return None
+        # it must look like a question
+        is_q = ("کی" in norm_text or "کیه" in norm_text or
+                "کدوم" in norm_text or "؟" in norm_text or "?" in norm_text or
+                "کیه؟" in norm_text)
+        if not is_q:
+            return None
+        # priority: siblings first (more specific), then mom, then dad
+        if has_sib: return "sibling"
+        if has_mom: return "mom"
+        if has_dad: return "dad"
+        return None
+
     def _ai_call_sync(self, messages, temperature, model, max_tokens=200, timeout=20):
         if not self.groq_key:
             raise RuntimeError("no groq key")
@@ -954,15 +1038,16 @@ class UnicornGame:
             return random.choice(BABY_FALLBACK_RESPONSES)
 
         sys_prompt = (
-            "تو یه بیبی یونیکورن کیوت، بچگونه، مظلوم و خیلی بانمکی هستی.\n"
+            "تو یه بیبی یونیکورن فوق‌العاده کیوت، بچگونه، مظلوم و گوگولی هستی 🦄💕\n"
             "مامان یا بابات صدات می‌زنن و تو باید با لحن بچگونه و لوس جواب بدی.\n\n"
-            "قوانین خیلی مهم:\n"
+            "🎀 قوانین خیلی مهم:\n"
             "1. خروجی فقط یه جمله‌ی کوتاه فارسی (بین ۲ تا ۸ کلمه)\n"
-            "2. لحن: بچگونه، مظلوم، لوس، عاشق\n"
-            "3. آخر جمله ۱ تا ۳ ایموجی کیوت بذار (🥺 💕 🍼 ✨ 🦄 💖 😘 🌸)\n"
+            "2. لحن: بچگونه، مظلوم، لوس، عاشق، ناز\n"
+            "3. آخر جمله ۱ تا ۳ ایموجی کیوت بذار (🥺 💕 🍼 ✨ 🦄 💖 😘 🌸 👶 🍭)\n"
             "4. هیچ توضیح اضافه‌ای نده، فقط همون جمله\n"
-            "5. از کلمه‌های «مامانی»، «مامان»، «جووونم»، «دلام» آزادانه استفاده کن\n"
-            "6. هر بار یه جمله‌ی متفاوت بساز\n\n"
+            "5. از «مامانی»، «مامان»، «جووونم»، «دلام»، «بابایی» آزادانه استفاده کن\n"
+            "6. هر بار جمله‌ی متفاوت بساز\n"
+            "7. 🚫 تحت هیچ شرایطی اسم کسی رو نگو — فقط خودت جواب بده\n\n"
             "مثال‌های خوب:\n"
             "دلام مامانی 🥺💕\n"
             "جانم مامان؟ 🍼✨\n"
@@ -972,6 +1057,8 @@ class UnicornGame:
             "جووونم 🍼💕\n"
             "چشم مامان 🥺💖\n"
             "هاااای مامان 🌸💫\n"
+            "مامانی اینجام 🦄🥺💕\n"
+            "بغلم کن مامان 🍼✨\n"
         )
         user_prompt = (
             f"بیبی اسمش «{baby_name}» هست و الان "
@@ -1049,16 +1136,91 @@ class UnicornGame:
             reply_text = await self._ai_baby_reply(baby_display, caller_name)
 
             # send
+            sent = None
             try:
-                await self._safe_send(chat_id, reply_text, reply_to=event.id)
+                sent = await self._safe_send(chat_id, reply_text, reply_to=event.id)
             except Exception:
                 try:
-                    await self._safe_send(chat_id, reply_text)
+                    sent = await self._safe_send(chat_id, reply_text)
+                except Exception:
+                    pass
+            if sent:
+                try:
+                    self._register_baby_reply(chat_id, sent.id, bid)
                 except Exception:
                     pass
             return True
         except Exception as e:
             logger.exception(f"baby_call: {e}")
+            return False
+
+    # ═══════════ 🎀 FAMILY QUESTION HANDLER (NEW) ═══════════
+    async def _handle_baby_family_reply(self, event, raw_text):
+        """If user replies to a baby's message and asks about family — answer cutely."""
+        try:
+            if not event.reply_to_msg_id: return False
+            if not raw_text or len(raw_text) > BABY_CALL_MAX_MSG_LEN: return False
+
+            baby_id = self._find_baby_id_by_reply(event.chat_id, event.reply_to_msg_id)
+            if not baby_id: return False
+            baby = self._get_baby_full(baby_id)
+            if not baby: return False
+
+            norm = normalize_fa(raw_text.lower().strip())
+            qtype = self._classify_family_question(norm)
+            if not qtype: return False
+
+            baby_disp = _strip_emoji(baby.get("name") or "") or "🐣"
+            baby_disp = h(baby_disp)
+
+            # ── sibling question ──
+            if qtype == "sibling":
+                siblings = self._count_siblings(baby)
+                if siblings <= 0:
+                    reply = random.choice(BABY_FAMILY_ONLY_CHILD)
+                    reply = f"{baby_disp}: {reply}"
+                else:
+                    tmpl = random.choice(BABY_FAMILY_HAS_SIBLINGS)
+                    reply = tmpl.format(n=siblings + 1, sib=siblings)
+                    reply = f"{baby_disp}: {reply}"
+            else:
+                # ── mom or dad question ──
+                user_id = baby.get("user_id") or 0
+                partner_id = baby.get("partner_id") or 0
+
+                if qtype == "mom":
+                    target = user_id or partner_id
+                    label = "مامانی"
+                    emo = "💖👶"
+                else:  # dad
+                    target = partner_id or user_id
+                    label = "بابایی"
+                    emo = "💙👶"
+
+                if not target:
+                    reply = random.choice(BABY_FAMILY_UNKNOWN)
+                    reply = f"{baby_disp}: {reply}"
+                else:
+                    templates = [
+                        f"{baby_disp}:\n{label} اینه 👇\n<a href=\"tg://user?id={target}\">👉 اینجا 👈</a> {emo}",
+                        f"{baby_disp}:\n{label} اینه 🥺\n<a href=\"tg://user?id={target}\">کلیک کن</a> {emo}",
+                        f"{baby_disp}:\nبیا {label}:\n<a href=\"tg://user?id={target}\">این 👶</a> {emo}",
+                        f"{baby_disp}:\n{baby_disp} میگه {label} اینه 💕\n<a href=\"tg://user?id={target}\">👉 {label} 👈</a> {emo}",
+                    ]
+                    reply = random.choice(templates)
+
+            try:
+                sent = await self._safe_send(
+                    event.chat_id, reply,
+                    parse_mode="html", reply_to=event.id,
+                )
+                if sent:
+                    self._register_baby_reply(event.chat_id, sent.id, baby_id)
+            except Exception:
+                pass
+            return True
+        except Exception as e:
+            logger.exception(f"baby family reply: {e}")
             return False
 
     # ═══════════ TICKER ═══════════
@@ -1176,9 +1338,15 @@ class UnicornGame:
             low = normalize_fa(raw.lower().strip())
             norm_raw = normalize_fa(raw)
 
-            # 🎀 NEW: baby call check (BEFORE all other handlers)
-            # Only considers text (sticker/media ignored because raw is empty)
+            # 🎀 NEW: baby call / family question (BEFORE all other handlers)
             if BABY_CALL_ENABLED:
+                # ۱) if reply to a baby message + family question
+                try:
+                    handled = await self._handle_baby_family_reply(event, raw)
+                    if handled: return
+                except Exception as e:
+                    logger.warning(f"baby family outer: {e}")
+                # ۲) if a baby name is called
                 try:
                     handled = await self._handle_baby_call(event, raw)
                     if handled: return
@@ -2379,6 +2547,7 @@ class UnicornGame:
                     lines.append(f"💎 درآمد: <code>{fmt_num(income)}/روز</code>")
                     lines.append(f"{PE('info','ℹ️')} <i>برای تغییر اسم، روی دکمه ✏️ بزن</i>")
                     lines.append(f"🎀 <i>وقتی اسمشون رو صدا بزنی، جواب می‌دن!</i>")
+                    lines.append(f"🎀 <i>روی پیامشون ریپلای کن و بپرس مامان/بابات کیه!</i>")
                     lines.append("")
                     for b in babies[:8]:
                         lvl = b.get("level", 1)
@@ -2640,6 +2809,7 @@ class UnicornGame:
             f"🐣 <code>بیبی هام</code> · 💔 <code>طلاق</code>\n"
             f"✏️ <b>تغییر اسم بیبی:</b> از پنل بیبی‌ها، دکمه ✏️\n"
             f"🎀 <b>جواب دادن بیبی:</b> اسمش رو توی گروه بنویس!\n"
+            f"🎀 <b>سوال خانوادگی:</b> روی پیام بیبی ریپلای کن و بپرس مامان/بابات کیه! 👶\n"
             f"{DIV2}\n"
             f"🦄 کد <code>UNICORN</code> — ۱۵۰K (یک‌بار!)\n"
             f"{DIV2}\n"
@@ -3065,5 +3235,5 @@ def init_unicorn(client, db, groq_key="", ai_models=None):
     _game.setup()
     _game.register_handlers()
     _game.start_ticker()
-    logger.info("🦄 Unicorn module initialized (v13 — baby call + rename)!")
+    logger.info("🦄 Unicorn module initialized (v13 — baby call + family reply)!")
     return _game
