@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-🦄 UNICORN PET GAME — Royal Edition v12
+🦄 UNICORN PET GAME — Royal Edition v13
 💔 Divorce · 🥚 6h Hatch · 🐣 Babies · 💰 Passive income
 ⚔️ Strategic Battle (Light) · 🔫 Weapon Tiers · 👑 Iranian Heroes
 🎁 UNICORN Code · 🛡️ Default Soldier · 🎉 Update Reward
-✏️ v12 NEW: Rename babies!
+✏️ Rename babies · 🎀 Baby answers when called!
 """
 
 import re, random, asyncio, logging, time, json
+import requests
 from telethon import events, Button
 from telethon.errors import MessageNotModifiedError
 
@@ -31,10 +32,37 @@ BABY_GROW_COST_BASE = 10000
 BABY_MAX_LEVEL = 5
 BABY_INCOME_PER_LEVEL_PER_DAY = 500
 
-# ✏️ NEW: Rename config
+# ✏️ Rename config
 BABY_NAME_MIN_LEN = 1
 BABY_NAME_MAX_LEN = 30
-BABY_RENAME_COST = 0   # ← هرچی می‌خوای، الان رایگانه
+BABY_RENAME_COST = 0
+
+# 🎀 NEW: Baby call feature
+BABY_CALL_ENABLED = True
+BABY_CALL_COOLDOWN_SEC = 90   # per baby, per chat
+BABY_CALL_MIN_LEN = 1          # minimum length of word to consider
+BABY_CALL_MAX_MSG_LEN = 400    # ignore long messages
+BABY_CALL_AI_MODELS = [
+    "llama-3.1-8b-instant",
+    "openai/gpt-oss-20b",
+    "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
+]
+# fallback responses (if AI fails)
+BABY_FALLBACK_RESPONSES = [
+    "دلام مامانی 🥺💕",
+    "جانم مامان؟ 🍼✨",
+    "چیه مامانی؟ 🦄💖",
+    "بیا بغلم مامان 🥺💗",
+    "مامان صدام زدی؟ 🌸✨",
+    "جووونم 🍼💕",
+    "بله مامان؟ 🦄✨",
+    "چشم مامان 🥺💖",
+    "هاااای مامان 🌸💫",
+    "چیه؟ بخورمت مامان 🍼😘",
+    "بله؟ اینجام مامانی 🦄💕",
+    "جانم؟ دل من لرزید 🥺✨",
+]
 
 COMBO_WINDOW_SEC = 30
 COMBO_BONUS_MULT = 2.0
@@ -104,7 +132,6 @@ BABY_NAMES = [
     "🍀 لاکی", "💖 هارت", "🎵 ملی", "🌊 آبی", "🍯 هانی",
 ]
 
-# ✏️ NEW: presets for quick rename
 BABY_NAME_PRESETS = [
     "🌈 استار", "✨ لونا", "💫 نوا", "🌸 پیچ", "🦄 دریم",
     "⭐ گالاکس", "🌟 سلست", "💎 کریستال", "🔥 فینیکس", "🌙 سلن",
@@ -149,23 +176,17 @@ SOLDIER_BASE_POWER = 10
 BATTLE_VARIANCE = 0.05
 
 DEFAULT_SOLDIER_COUNT = 1
-
 UNICORN_CODE_REWARD = 150_000
 
-# 🎁 Update reward config
-UPDATE_VERSION = "v12_2025-11-08"
+UPDATE_VERSION = "v13_2025-11-08"
 REWARD_USER_ID = 6691915596
 REWARD_AMOUNT = 2_000_000
 
 WEAPON_TIERS = {
-    0: ("🪨", "سنگ و چوب"),
-    1: ("⚒️", "مفرغ"),
-    2: ("🗡️", "آهن"),
-    3: ("⚔️", "فولاد"),
-    4: ("💥", "باروت"),
-    5: ("🔫", "مدرن"),
-    6: ("⚡", "پیشرفته"),
-    7: ("🌟", "آینده"),
+    0: ("🪨", "سنگ و چوب"), 1: ("⚒️", "مفرغ"),
+    2: ("🗡️", "آهن"), 3: ("⚔️", "فولاد"),
+    4: ("💥", "باروت"), 5: ("🔫", "مدرن"),
+    6: ("⚡", "پیشرفته"), 7: ("🌟", "آینده"),
     8: ("🌌", "فرا نوین"),
 }
 
@@ -174,35 +195,27 @@ WEAPONS = {
     "spear_wood":    ("نیزه چوبی",       "🪵", 0, 25,        150_000),
     "axe_stone":     ("تبر سنگی",        "🪓", 0, 40,        400_000),
     "bow_wood":      ("کمان چوبی",       "🏹", 0, 60,        1_000_000),
-
     "sword_bronze":  ("شمشیر مفرغی",     "⚒️", 1, 120,       2_500_000),
     "shield_bronze": ("سپر مفرغی",       "🛡️", 1, 180,       5_000_000),
     "spear_bronze":  ("نیزه مفرغی",      "🔱", 1, 250,       10_000_000),
-
     "sword_iron":    ("شمشیر آهنی",      "🗡️", 2, 400,       25_000_000),
     "axe_iron":      ("تبر جنگی",        "🪓", 2, 600,       50_000_000),
     "bow_iron":      ("کمان آهنی",       "🏹", 2, 850,       100_000_000),
-
     "sword_steel":   ("شمشیر فولادی",    "⚔️", 3, 1_300,     250_000_000),
     "shield_steel":  ("سپر فولادی",      "🛡️", 3, 1_800,     500_000_000),
     "crossbow":      ("تیرکمان فولادی",  "🎯", 3, 2_500,     1_000_000_000),
-
     "musket":        ("تفنگ سرپر",       "💥", 4, 4_000,     2_500_000_000),
     "cannon":        ("توپ جنگی",        "💣", 4, 6_000,     5_000_000_000),
     "grenade":       ("نارنجک",          "🧨", 4, 9_000,     10_000_000_000),
-
     "rifle":         ("تفنگ جنگی",       "🔫", 5, 15_000,    25_000_000_000),
     "sniper":        ("اسنایپر",         "🎯", 5, 25_000,    50_000_000_000),
     "machinegun":    ("مسلسل سنگین",     "🔫", 5, 40_000,    100_000_000_000),
-
     "laser":         ("لیزر پلاسما",     "⚡", 6, 75_000,    250_000_000_000),
     "railgun":       ("ریلگان",          "🌟", 6, 120_000,   500_000_000_000),
     "drone":         ("پهپاد رزمی",      "🛸", 6, 200_000,   1_000_000_000_000),
-
     "plasma":        ("تفنگ پلاسما",     "💫", 7, 400_000,   2_500_000_000_000),
     "antimatter":    ("توپ ضد ماده",     "🌌", 7, 700_000,   5_000_000_000_000),
     "quantum":       ("سلاح کوانتومی",   "🌀", 7, 1_200_000, 10_000_000_000_000),
-
     "blackhole":     ("توپ سیاه‌چاله",   "🕳️", 8, 3_000_000, 25_000_000_000_000),
     "nova":          ("نواختر",          "💥", 8, 5_000_000, 50_000_000_000_000),
     "godslayer":     ("خداشکن",          "👁️", 8, 10_000_000,100_000_000_000_000),
@@ -247,6 +260,24 @@ PREM = {
 }
 
 _TG_EMOJI_RE = re.compile(r'<tg-emoji emoji-id="\d+">([^<]*)</tg-emoji>')
+
+# regex for emoji chars (for stripping from baby name matching)
+_EMOJI_STRIP_RE = re.compile(
+    "["
+    "\U0001F300-\U0001F9FF"  # emoji
+    "\U0001FA00-\U0001FAFF"
+    "\U00002600-\U000027BF"
+    "\U0001F000-\U0001F2FF"
+    "\u2600-\u27bf"
+    "\u2190-\u21ff"
+    "\u2300-\u23ff"
+    "\u2b00-\u2bff"
+    "\u200d\u2640\u2642\ufe0f"
+    "]+",
+    flags=re.UNICODE,
+)
+
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 
 def PE(k, fb):
@@ -359,39 +390,45 @@ def roll_neigh_event():
     return None
 
 
-# ✏️ NEW: Validate new baby name
-def _clean_baby_name(raw_name):
-    """Return sanitized name or None if invalid."""
-    if not raw_name:
+def _clean_baby_name(raw):
+    """Sanitize a new baby name from user input."""
+    if not raw:
         return None
-    n = raw_name.strip()
-    # reject commands / empty
+    n = raw.strip()
     if not n:
         return None
-    # length check
+    n = n.replace("\n", " ").replace("\r", " ").strip()
+    n = re.sub(r"\s+", " ", n)
     if len(n) < BABY_NAME_MIN_LEN or len(n) > BABY_NAME_MAX_LEN:
         return None
-    # strip newlines
-    n = n.replace("\n", " ").replace("\r", " ").strip()
-    # collapse spaces
-    n = re.sub(r"\s+", " ", n)
     return n
+
+
+def _strip_emoji(s):
+    """Remove emojis from a string (for name matching)."""
+    if not s:
+        return ""
+    s = _EMOJI_STRIP_RE.sub("", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
 
 
 # ═══════════════════════════════════════════════════════════
 # GAME
 # ═══════════════════════════════════════════════════════════
 class UnicornGame:
-    def __init__(self, client, db):
+    def __init__(self, client, db, groq_key="", ai_models=None):
         self.client = client
         self.db = db
         self.conn = db.conn
         self._running = False
         self._combo = {}
         self._last_breed_cache = {}
-        # ✏️ NEW: pending rename state
-        # {user_id: {"baby_id": int, "chat_id": int, "msg_id": int}}
         self._pending_renames = {}
+        # 🎀 NEW: baby call cooldown & AI
+        self._baby_call_cd = {}       # {(baby_id, chat_id): ts}
+        self.groq_key = (groq_key or "").strip()
+        self.ai_models = ai_models or BABY_CALL_AI_MODELS
 
     def _c(self):
         import psycopg2, psycopg2.extras
@@ -530,13 +567,12 @@ class UnicornGame:
         c.execute("""CREATE INDEX IF NOT EXISTS idx_uni_points ON unicorns(points DESC)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_eggs_lookup ON unicorn_eggs(user_id, partner_id, hatched_at)""")
         c.execute("""CREATE INDEX IF NOT EXISTS idx_babies_lookup ON unicorn_babies(user_id, partner_id)""")
-        logger.info("🦄 Unicorn tables ready (v12 — rename babies)")
+        logger.info("🦄 Unicorn tables ready (v13 — baby call)")
         try:
             self._check_update_reward()
         except Exception as e:
             logger.exception(f"reward check: {e}")
 
-    # ═══════════ 🎁 UPDATE REWARD ═══════════
     def _check_update_reward(self):
         try:
             c = self._c()
@@ -809,7 +845,6 @@ class UnicornGame:
                OR (user_id=%s AND partner_id=%s)""",
             (uid1, uid2, uid2, uid1))
 
-    # ✏️ NEW: rename a baby (ownership-checked)
     def rename_baby(self, uid, baby_id, new_name):
         c = self._c()
         c.execute("SELECT * FROM unicorn_babies WHERE id=%s", (baby_id,))
@@ -821,24 +856,210 @@ class UnicornGame:
         if not u:
             return False, "یونیکورن نداری"
         partner = u.get("married_to") or 0
-        # ownership check
         owns = (baby["user_id"] == uid or baby["partner_id"] == uid or
                 (partner and (baby["user_id"] == partner or baby["partner_id"] == partner)))
         if not owns:
             return False, "مال تو نیست"
-        # length / content check
         clean = _clean_baby_name(new_name)
         if not clean:
             return False, f"اسم باید بین {BABY_NAME_MIN_LEN} تا {BABY_NAME_MAX_LEN} حرف باشه"
-        # cost check (if BABY_RENAME_COST > 0)
         if BABY_RENAME_COST > 0:
             if (u.get("points") or 0) < BABY_RENAME_COST:
                 return False, f"{fmt_num(BABY_RENAME_COST)} پوینت لازمه"
             self.update(uid, points=(u.get("points") or 0) - BABY_RENAME_COST)
-        # update
         c2 = self._c()
         c2.execute("UPDATE unicorn_babies SET name=%s WHERE id=%s", (clean, baby_id))
         return True, clean
+
+    # ═══════════ 🎀 BABY CALL HELPERS ═══════════
+    def _fetch_all_babies_light(self, limit=500):
+        """Return list of {id, name, user_id, partner_id}."""
+        try:
+            c = self._c()
+            c.execute("""SELECT id, name, user_id, partner_id FROM unicorn_babies
+                         ORDER BY born_at DESC LIMIT %s""", (limit,))
+            return [dict(r) for r in c.fetchall()]
+        except Exception as e:
+            logger.warning(f"fetch babies: {e}")
+            return []
+
+    def _find_babies_in_text(self, raw_text):
+        """Return list of baby dicts whose clean name matches a word in text."""
+        if not raw_text or len(raw_text) > BABY_CALL_MAX_MSG_LEN:
+            return []
+        # clean the incoming text
+        text_clean = _strip_emoji(raw_text)
+        if not text_clean:
+            return []
+        text_lower = text_clean.lower()
+        # words set (split on whitespace and punctuation)
+        words = re.findall(r"[\w\u0600-\u06FF]+", text_lower, flags=re.UNICODE)
+        word_set = set(w for w in words if len(w) >= BABY_CALL_MIN_LEN)
+        if not word_set and " " not in text_lower:
+            return []
+
+        babies = self._fetch_all_babies_light()
+        if not babies:
+            return []
+
+        matches = []
+        seen_ids = set()
+        for b in babies:
+            bid = b["id"]
+            if bid in seen_ids:
+                continue
+            clean = _strip_emoji(b.get("name") or "").lower()
+            if not clean:
+                continue
+            if " " in clean:
+                # multi-word baby name — match exact phrase in text
+                if clean in text_lower:
+                    matches.append(b)
+                    seen_ids.add(bid)
+            else:
+                if clean in word_set:
+                    matches.append(b)
+                    seen_ids.add(bid)
+        return matches
+
+    def _check_baby_call_cooldown(self, baby_id, chat_id):
+        key = (baby_id, chat_id)
+        last = self._baby_call_cd.get(key, 0)
+        now = now_ts()
+        if now - last < BABY_CALL_COOLDOWN_SEC:
+            return False
+        self._baby_call_cd[key] = now
+        # light cleanup of old entries
+        if len(self._baby_call_cd) > 500:
+            cutoff = now - BABY_CALL_COOLDOWN_SEC * 4
+            self._baby_call_cd = {k: v for k, v in self._baby_call_cd.items() if v > cutoff}
+        return True
+
+    def _ai_call_sync(self, messages, temperature, model, max_tokens=200, timeout=20):
+        if not self.groq_key:
+            raise RuntimeError("no groq key")
+        payload = {"model": model, "messages": messages,
+                   "temperature": temperature, "max_tokens": max_tokens}
+        headers = {"Authorization": f"Bearer {self.groq_key}",
+                   "Content-Type": "application/json"}
+        r = requests.post(GROQ_URL, headers=headers, json=payload, timeout=timeout)
+        if r.status_code >= 400:
+            raise RuntimeError(f"HTTP {r.status_code}")
+        return r.json()
+
+    async def _ai_baby_reply(self, baby_name, caller_name):
+        """Generate a cute short baby reply using AI (with fallback)."""
+        # fallback path when no key
+        if not self.groq_key:
+            return random.choice(BABY_FALLBACK_RESPONSES)
+
+        sys_prompt = (
+            "تو یه بیبی یونیکورن کیوت، بچگونه، مظلوم و خیلی بانمکی هستی.\n"
+            "مامان یا بابات صدات می‌زنن و تو باید با لحن بچگونه و لوس جواب بدی.\n\n"
+            "قوانین خیلی مهم:\n"
+            "1. خروجی فقط یه جمله‌ی کوتاه فارسی (بین ۲ تا ۸ کلمه)\n"
+            "2. لحن: بچگونه، مظلوم، لوس، عاشق\n"
+            "3. آخر جمله ۱ تا ۳ ایموجی کیوت بذار (🥺 💕 🍼 ✨ 🦄 💖 😘 🌸)\n"
+            "4. هیچ توضیح اضافه‌ای نده، فقط همون جمله\n"
+            "5. از کلمه‌های «مامانی»، «مامان»، «جووونم»، «دلام» آزادانه استفاده کن\n"
+            "6. هر بار یه جمله‌ی متفاوت بساز\n\n"
+            "مثال‌های خوب:\n"
+            "دلام مامانی 🥺💕\n"
+            "جانم مامان؟ 🍼✨\n"
+            "چیه مامانی؟ 🦄💖\n"
+            "بیا بغلم مامان 🥺💗\n"
+            "مامان صدام زدی؟ 🌸✨\n"
+            "جووونم 🍼💕\n"
+            "چشم مامان 🥺💖\n"
+            "هاااای مامان 🌸💫\n"
+        )
+        user_prompt = (
+            f"بیبی اسمش «{baby_name}» هست و الان "
+            f"«{caller_name}» صداش زده.\n"
+            f"یه جواب خیلی کیوت بچگونه بده."
+        )
+        msgs = [{"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt}]
+
+        models = self.ai_models or BABY_CALL_AI_MODELS
+        for model in models:
+            for attempt in range(2):
+                try:
+                    temp = 0.9 if attempt == 0 else 1.15
+                    data = await asyncio.to_thread(
+                        self._ai_call_sync, msgs, temp, model, 80
+                    )
+                    content = data["choices"][0]["message"]["content"].strip()
+                    # clean up
+                    content = re.sub(r"^[\"'\-\*\s]+", "", content)
+                    content = re.sub(r"[\"'\s]+$", "", content)
+                    content = content.replace("\n", " ").strip()
+                    if not content:
+                        raise ValueError("empty")
+                    if len(content) > 80:
+                        content = content[:80]
+                    return content
+                except Exception as e:
+                    logger.warning(f"baby AI fail {model}: {str(e)[:60]}")
+                    await asyncio.sleep(0.3)
+        return random.choice(BABY_FALLBACK_RESPONSES)
+
+    async def _handle_baby_call(self, event, raw_text):
+        """Check if message calls any baby; if so, reply cutely."""
+        if not BABY_CALL_ENABLED:
+            return False
+        try:
+            if not raw_text or not raw_text.strip():
+                return False
+            # skip if message is a bot command or too long
+            if len(raw_text) > BABY_CALL_MAX_MSG_LEN:
+                return False
+            # skip commands like نیه
+            low = normalize_fa(raw_text.lower().strip())
+            if low in ("نیه", "نیییه", "نههه", "neigh", "برداشت",
+                       "غذا", "پاداش", "گردونه", "راهنما", "یونیکورن",
+                       "تخم", "طلاق", "ازدواج", "دوئل", "دویل", "بجنگ",
+                       "بیبی هام", "بچه هام", "بچه‌هام", "بچه ها"):
+                return False
+
+            matches = self._find_babies_in_text(raw_text)
+            if not matches:
+                return False
+
+            # pick the first match (most recent by born_at desc)
+            baby = matches[0]
+            bid = baby["id"]
+            chat_id = event.chat_id
+
+            if not self._check_baby_call_cooldown(bid, chat_id):
+                return True  # considered "handled" to block other handlers
+
+            # find caller name
+            try:
+                s = await event.get_sender()
+                caller_name = user_name(s)
+            except Exception:
+                caller_name = "مامان"
+
+            # display clean baby name
+            baby_display = _strip_emoji(baby.get("name") or "") or (baby.get("name") or "🐣")
+            baby_display = h(baby_display)
+
+            # generate reply
+            reply_text = await self._ai_baby_reply(baby_display, caller_name)
+
+            # send
+            try:
+                await self._safe_send(chat_id, reply_text, reply_to=event.id)
+            except Exception:
+                try:
+                    await self._safe_send(chat_id, reply_text)
+                except Exception:
+                    pass
+            return True
+        except Exception as e:
+            logger.exception(f"baby_call: {e}")
+            return False
 
     # ═══════════ TICKER ═══════════
     async def _ticker(self):
@@ -955,17 +1176,24 @@ class UnicornGame:
             low = normalize_fa(raw.lower().strip())
             norm_raw = normalize_fa(raw)
 
-            # ✏️ NEW: pending rename — catch the next message from this user
+            # 🎀 NEW: baby call check (BEFORE all other handlers)
+            # Only considers text (sticker/media ignored because raw is empty)
+            if BABY_CALL_ENABLED:
+                try:
+                    handled = await self._handle_baby_call(event, raw)
+                    if handled: return
+                except Exception as e:
+                    logger.warning(f"baby_call outer: {e}")
+
+            # ✏️ Rename pending — catch the next message
             if uid in self._pending_renames:
                 pending = self._pending_renames.get(uid)
-                # cancel commands
                 if low in ("لغو", "کنسل", "cancel", "بیخیال", "❌", "بازگشت", "back"):
                     self._pending_renames.pop(uid, None)
                     await self._safe_send(event.chat_id,
                         f"{PE('cross','❌')} <b>تغییر اسم لغو شد.</b>",
                         parse_mode="html", reply_to=event.id)
                     return
-                # try to apply
                 baby_id = pending.get("baby_id")
                 ok, result = self.rename_baby(uid, baby_id, raw)
                 self._pending_renames.pop(uid, None)
@@ -978,7 +1206,6 @@ class UnicornGame:
                         f"📛 اسم جدید: <b>{h(new_name)}</b>\n"
                         f"{PE('heart','💖')} <i>حالا این اسمشه!</i>",
                         parse_mode="html", reply_to=event.id)
-                    # refresh babies view
                     fake = type("E", (), {"chat_id": event.chat_id,
                                           "id": pending.get("msg_id"),
                                           "message_id": pending.get("msg_id"),
@@ -2118,7 +2345,7 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"breed: {e}")
 
-    # ═══════════ BABIES UI (✏️ NEW: rename buttons) ═══════════
+    # ═══════════ BABIES UI ═══════════
     async def _show_babies(self, event, uid, edit_msg=None):
         try:
             u = self.get_unicorn(uid)
@@ -2151,6 +2378,7 @@ class UnicornGame:
                     lines.append(f"🐣 <b>بیبی‌ها ({len(babies)}):</b>")
                     lines.append(f"💎 درآمد: <code>{fmt_num(income)}/روز</code>")
                     lines.append(f"{PE('info','ℹ️')} <i>برای تغییر اسم، روی دکمه ✏️ بزن</i>")
+                    lines.append(f"🎀 <i>وقتی اسمشون رو صدا بزنی، جواب می‌دن!</i>")
                     lines.append("")
                     for b in babies[:8]:
                         lvl = b.get("level", 1)
@@ -2158,7 +2386,6 @@ class UnicornGame:
                         lines.append(f"   📛 <b>{h(b['name'])}</b>  {stars}  Lv{lvl}")
 
             btns = []
-            # ✏️ NEW: rename buttons — one row per baby
             if babies:
                 for b in babies[:8]:
                     btns.append([Button.inline(
@@ -2177,7 +2404,6 @@ class UnicornGame:
         except Exception as e:
             logger.exception(f"babies: {e}")
 
-    # ✏️ NEW: Rename prompt
     async def _start_rename(self, event, uid, baby_id):
         try:
             c = self._c()
@@ -2195,7 +2421,6 @@ class UnicornGame:
             if not owns:
                 await self._safe_answer(event, "⛔ مال تو نیست!", alert=True); return
 
-            # save state
             self._pending_renames[uid] = {
                 "baby_id": baby_id,
                 "chat_id": event.chat_id,
@@ -2204,7 +2429,6 @@ class UnicornGame:
             await self._safe_answer(event, "✏️ اسم جدید رو بفرست")
 
             old_name = h(baby.get("name") or "—")
-            # show quick presets + cancel
             rows = []
             for i in range(0, len(BABY_NAME_PRESETS), 2):
                 pair = BABY_NAME_PRESETS[i:i+2]
@@ -2414,7 +2638,8 @@ class UnicornGame:
             f"{DIV2}\n"
             f"💍 <code>ازدواج</code> · 🥚 <code>تخم</code>\n"
             f"🐣 <code>بیبی هام</code> · 💔 <code>طلاق</code>\n"
-            f"✏️ <b>تغییر اسم بیبی:</b> از پنل بیبی‌ها، دکمه ✏️ رو بزن\n"
+            f"✏️ <b>تغییر اسم بیبی:</b> از پنل بیبی‌ها، دکمه ✏️\n"
+            f"🎀 <b>جواب دادن بیبی:</b> اسمش رو توی گروه بنویس!\n"
             f"{DIV2}\n"
             f"🦄 کد <code>UNICORN</code> — ۱۵۰K (یک‌بار!)\n"
             f"{DIV2}\n"
@@ -2476,7 +2701,6 @@ class UnicornGame:
             if action == "noop":
                 await self._safe_answer(event); return
 
-            # ✏️ NEW: rename handlers
             if action == "rename":
                 try: baby_id = int(parts[2])
                 except Exception:
@@ -2835,11 +3059,11 @@ class UnicornGame:
 _game = None
 
 
-def init_unicorn(client, db):
+def init_unicorn(client, db, groq_key="", ai_models=None):
     global _game
-    _game = UnicornGame(client, db)
+    _game = UnicornGame(client, db, groq_key=groq_key, ai_models=ai_models)
     _game.setup()
     _game.register_handlers()
     _game.start_ticker()
-    logger.info("🦄 Unicorn module initialized (v12 — rename babies)!")
+    logger.info("🦄 Unicorn module initialized (v13 — baby call + rename)!")
     return _game
