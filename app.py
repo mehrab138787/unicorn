@@ -8,6 +8,7 @@
 + 🔧 v3: DB reconnect + callback isolation fix
 + 🕵️ Spy game integrated
 + 🎭 Truth-or-Dare moved to separate module
++ 👥 v4: Group admins are now recognized as admins
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
@@ -17,6 +18,7 @@ import socks, requests, psycopg2, psycopg2.extras
 from aiohttp import web
 from dotenv import load_dotenv
 from telethon import TelegramClient, events, Button
+from telethon.tl.types import ChannelParticipantsAdmins
 from telethon.errors import MessageNotModifiedError, FloodWaitError
 
 # ═══════════════════════════════════════════════════════════
@@ -195,6 +197,54 @@ def user_name(u):
 def is_admin(uid): return uid in ALL_ADMINS
 
 
+# ═══════════════════════════════════════════════════════════
+# 👥 v4: GROUP ADMIN DETECTION (cached)
+# ═══════════════════════════════════════════════════════════
+_group_admin_cache = {}
+_GROUP_ADMIN_TTL = 300  # ثانیه
+
+
+async def _get_group_admin_ids(chat_id):
+    """لیست ID ادمین‌های گروه رو با کش برمی‌گردونه."""
+    if not isinstance(chat_id, int) or chat_id >= 0:
+        return set()
+    now = time.time()
+    c = _group_admin_cache.get(chat_id)
+    if c and (now - c["ts"]) < _GROUP_ADMIN_TTL:
+        return c["ids"]
+    try:
+        parts = await client.get_participants(chat_id, filter=ChannelParticipantsAdmins)
+        ids = {p.id for p in parts}
+        _group_admin_cache[chat_id] = {"ids": ids, "ts": now}
+        return ids
+    except Exception as e:
+        logger.debug(f"group admins fetch failed ({chat_id}): {e}")
+        if c: return c["ids"]
+        return set()
+
+
+async def is_admin_here(uid, chat_id=None):
+    """True اگه کاربر ادمین سراسری باشه یا ادمین همین گروه."""
+    if is_admin(uid):
+        return True
+    if chat_id is None:
+        return False
+    try:
+        if isinstance(chat_id, int) and chat_id < 0:
+            ids = await _get_group_admin_ids(chat_id)
+            return uid in ids
+    except Exception:
+        pass
+    return False
+
+
+def invalidate_group_admin_cache(chat_id=None):
+    if chat_id is None:
+        _group_admin_cache.clear()
+    else:
+        _group_admin_cache.pop(chat_id, None)
+
+
 def parse_duration(text):
     if not text: return None
     t = str(text).strip().lower()
@@ -240,8 +290,10 @@ TEMPLATES = [
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-AI_MODELS = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile",
-             "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "llama-3.1-8b-instant"]
+AI_MODELS = [
+    "llama-3.1-8b-instant",
+    "qwen/qwen3.8-27b",
+]
 
 QUIZ_CATEGORIES = [
     ("book", "📖", "تاریخی"), ("ball", "⚽", "ورزشی"),
@@ -1435,7 +1487,8 @@ async def on_group_message(event):
             await safe_reply(event, f"{E('laugh','😂')} <b>شیک بزن شلوغ بشه</b> {E('laugh','😂')}",
                              parse_mode="html")
             return
-        if not is_admin(event.sender_id): return
+        # 👥 v4: تشخیص ادمین گروه + سراسری
+        if not await is_admin_here(event.sender_id, event.chat_id): return
         if raw in ("معما", "معما جدید", "پازل", "پازل جدید"):
             uid = event.sender_id
             game = create_riddle_setup(uid, event.chat_id)
@@ -1870,7 +1923,9 @@ async def on_cb(event):
             g = _find_game_for_callback(event)
             if not g or g.get("state") != "waiting":
                 await event.answer("❌ بازی فعال نیست!", alert=True); return
-            if not is_admin(uid): await event.answer("⛔ فقط ادمین!", alert=True); return
+            # 👥 v4: ادمین گروه هم می‌تونه
+            if not await is_admin_here(uid, event.chat_id):
+                await event.answer("⛔ فقط ادمین!", alert=True); return
             if len(g["players"]) < 1: await event.answer("⚠️ حداقل ۱ بازیکن!", alert=True); return
             await event.answer("🚀")
             try:
@@ -1902,7 +1957,9 @@ async def on_cb(event):
         if data == "quiz_skip_turn":
             g = _find_game_for_callback(event)
             if not g or g.get("state") != "playing": await event.answer("❌", alert=True); return
-            if not is_admin(uid): await event.answer("⛔ فقط ادمین!", alert=True); return
+            # 👥 v4: ادمین گروه هم می‌تونه
+            if not await is_admin_here(uid, event.chat_id):
+                await event.answer("⛔ فقط ادمین!", alert=True); return
             await event.answer("⏭"); asyncio.create_task(quiz_skip_turn(g)); return
         if data == "quiz_cancel":
             SETUP_GAMES.pop(uid, None); await event.answer("❌")
@@ -2269,6 +2326,7 @@ async def main():
     if not DATABASE_URL: raise ValueError("❌ DATABASE_URL لازمه")
     logger.info(f"👥 Admins ({len(ALL_ADMINS)}): {sorted(ALL_ADMINS)}")
     logger.info(f"🕵️ Riddle: Simple | 🧠 Quiz: Medium | 🐛 All bug fixes applied")
+    logger.info(f"👥 v4: Group admins are now recognized as admins")
     await start_web_server()
     await client.start(bot_token=BOT_TOKEN)
     me = await client.get_me()
@@ -2302,6 +2360,7 @@ async def main():
                         f"{E('detective','🕵️')} جاسوس: <b>فعال</b>\n"
                         f"🦄 یونیکورن: <b>فعال</b>\n"
                         f"🎭 جرعت حقیقت: <b>فعال</b>\n"
+                        f"👥 ادمین گروه: <b>فعال</b>\n"
                         f"{E('time','⏱')} {now_str()}",
                         parse_mode="html")
     except Exception as e: logger.warning(f"notify owner: {e}")
