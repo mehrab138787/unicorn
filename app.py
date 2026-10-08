@@ -9,9 +9,12 @@
 + 🕵️ Spy game integrated
 + 🎭 Truth-or-Dare moved to separate module
 + 👥 v4: Group admins are now recognized as admins
++ 🎮 v5: Live game control panel (private, per-admin)
++ 💌 v6: Startup greeting to all global admins with premium emojis
 """
 
 import os, re, csv, io, json, random, asyncio, logging, time
+import itertools as _it
 from datetime import datetime, timedelta, timezone
 
 import socks, requests, psycopg2, psycopg2.extras
@@ -92,6 +95,8 @@ PREMIUM = {
     "medal": "5458603043203327669", "skip": "5424972470023104089",
     "detective": "5424972470023104089", "clue": "5271604874419647061",
     "knife": "5447644880824181073", "eye": "5397782960512444700",
+    # 💋 ایموجی بوس پرمیوم (در صورت موجود نبودن، به یونیکد فالبک می‌شود)
+    "kiss": "5373162440031354758",
 }
 
 
@@ -324,6 +329,130 @@ RIDDLE_ACTIVE_GAMES = {}
 SETUP_GAMES = {}; ACTIVE_GAMES = {}
 
 
+# ═══════════════════════════════════════════════════════════
+# 🎮 v5: LIVE GAME CONTROL PANEL (private, per-admin)
+# ═══════════════════════════════════════════════════════════
+_panel_counter = _it.count(1)
+GAME_PANELS = {}      # panel_id -> {admin_id, group_id, type, title, stop, ref, stopped, msg_id}
+PANEL_BY_REF = {}     # (game_type, ref) -> panel_id
+
+
+async def send_control_panel(admin_id, group_id, game_type, title, stop_cb=None, ref=None):
+    """یه پنل کنترل زنده توی پیوی ادمین می‌فرسته."""
+    pid = next(_panel_counter)
+    GAME_PANELS[pid] = {
+        "admin_id": admin_id, "group_id": group_id,
+        "type": game_type, "title": title,
+        "stop": stop_cb, "ref": ref,
+        "stopped": False, "msg_id": None,
+    }
+    text = (f"{E('gamepad','🎮')} <b>پنل کنترل زنده</b>\n{DIV}\n\n"
+            f"{E('target','🎯')} <b>نوع بازی:</b> {h(game_type)}\n"
+            f"{E('tag','🏷️')} <b>عنوان:</b> {h(title)}\n"
+            f"{E('group','🏢')} <b>گروه:</b> <code>{group_id}</code>\n\n"
+            f"{DIV2}\n"
+            f"{E('info','ℹ️')} <i>تا وقتی این بازی تموم نشده، این پنل فعاله.</i>\n"
+            f"{E('alert','⚠️')} <i>با دکمهٔ زیر می‌تونی هر لحظه متوقفش کنی.</i>")
+    btns = [[Button.inline("🛑 توقف بازی", data=f"gstop:{pid}".encode())],
+            [Button.inline("🔄 رفرش وضعیت", data=f"gref:{pid}".encode())]]
+    try:
+        sent = await safe_send(admin_id, text, buttons=btns, parse_mode="html")
+        if sent:
+            GAME_PANELS[pid]["msg_id"] = sent.id
+            return pid
+    except Exception as e:
+        logger.warning(f"ctrl panel send: {e}")
+    GAME_PANELS.pop(pid, None)
+    return None
+
+
+async def stop_game_by_panel(pid, by_admin=None):
+    p = GAME_PANELS.get(pid)
+    if not p or p.get("stopped"): return False
+    p["stopped"] = True
+    cb = p.get("stop")
+    try:
+        if cb:
+            r = cb(p.get("ref"))
+            if asyncio.iscoroutine(r): await r
+    except Exception as e:
+        logger.exception(f"stop cb: {e}")
+    try:
+        PANEL_BY_REF.pop((p.get("type"), p.get("ref")), None)
+    except Exception: pass
+    return True
+
+
+async def close_control_panel(game_type, ref, reason="پایان بازی"):
+    """وقتی بازی طبیعی تموم شد، پنل رو می‌بنده."""
+    pid = PANEL_BY_REF.pop((game_type, ref), None)
+    if not pid: return
+    p = GAME_PANELS.pop(pid, None)
+    if not p or p.get("stopped"): return
+    mid = p.get("msg_id"); aid = p.get("admin_id")
+    if not mid or not aid: return
+    try:
+        await client.edit_message(
+            aid, mid,
+            text=(f"{E('flag','🏁')} <b>بازی تموم شد</b>\n{DIV}\n\n"
+                  f"{E('tag','🏷️')} {h(p['title'])}\n"
+                  f"{E('info','ℹ️')} {h(reason)}\n"
+                  f"{E('time','⏱')} {now_str()}"),
+            buttons=None, parse_mode="html")
+    except Exception:
+        pass
+
+
+# ─── Stop Callbacks ───
+async def _stop_quiz_game(gid):
+    g = ACTIVE_GAMES.get(gid)
+    if not g: return
+    g["state"] = "finished"
+    await _stop_task_safe(g.get("timeout_task"), settle=0)
+    g["timeout_task"] = None
+    try:
+        await safe_send(gid,
+            f"{E('cross','❌')} <b>بازی توسط ادمین متوقف شد!</b>\n{DIV}\n\n"
+            f"{E('info','ℹ️')} <i>سازنده بازی این بازی رو بست.</i>",
+            parse_mode="html")
+    except Exception: pass
+    ACTIVE_GAMES.pop(gid, None)
+
+
+async def _stop_riddle_game(gid):
+    g = RIDDLE_ACTIVE_GAMES.get(gid)
+    if not g: return
+    g["state"] = "stopped"
+    for t in g.get("hint_tasks", []):
+        try: t.cancel()
+        except Exception: pass
+    if g.get("timer_task"):
+        try: g["timer_task"].cancel()
+        except Exception: pass
+    try:
+        await safe_send(gid,
+            f"{E('cross','❌')} <b>بازی معما توسط ادمین متوقف شد!</b>",
+            parse_mode="html")
+    except Exception: pass
+    RIDDLE_ACTIVE_GAMES.pop(gid, None)
+
+
+async def _stop_challenge(cid):
+    ch = db.get_challenge(cid)
+    if not ch: return
+    db.deactivate_challenge(cid)
+    db.mark_results_announced(cid)
+    try:
+        await safe_send(ch["group_id"],
+            f"{E('cross','❌')} <b>این چالش توسط ادمین بسته شد.</b>\n"
+            f"{E('diamond','💎')} {h(ch['title'])}",
+            parse_mode="html")
+    except Exception: pass
+
+
+# ═══════════════════════════════════════════════════════════
+# 🧠 AI HELPERS
+# ═══════════════════════════════════════════════════════════
 def _ai_call_sync(messages, temperature, model, max_tokens=800):
     payload = {"model": model, "messages": messages, "temperature": temperature,
                "max_tokens": max_tokens}
@@ -514,6 +643,9 @@ async def ai_analyze_riddle_answers(riddle, answers_list):
     }
 
 
+# ═══════════════════════════════════════════════════════════
+# 🗄️ DATABASE
+# ═══════════════════════════════════════════════════════════
 class DB:
     def __init__(self, dsn):
         self.dsn = dsn
@@ -713,6 +845,9 @@ def get_state(uid): return _user_states.get(uid)
 def clear_state(uid): _user_states.pop(uid, None)
 
 
+# ═══════════════════════════════════════════════════════════
+# 🛡️ ADMIN MENU
+# ═══════════════════════════════════════════════════════════
 async def send_admin_menu(event, edit=False):
     text = (f"{E('crown','👑')} <b>UNICORN · ADMIN PANEL</b> {E('crown','👑')}\n{DIV}\n\n"
             f"{E('sparkle','✨')} <b>سلام ادمین عزیز!</b> {E('wave','👋')}\n{DIV2}\n\n"
@@ -754,6 +889,9 @@ def build_challenge_text(cid, title, question, ch_type, options, deadline):
     return body + extra
 
 
+# ═══════════════════════════════════════════════════════════
+# 🧠 QUIZ GAME
+# ═══════════════════════════════════════════════════════════
 def create_setup_game(aid, gid):
     g = {"id": int(datetime.now(IRAN_TZ).timestamp() * 1000) % 100000000,
          "admin_id": aid, "group_id": gid, "categories": [],
@@ -897,6 +1035,15 @@ async def quiz_broadcast_join(g):
         sent = await safe_send(g["group_id"], text, buttons=btns, parse_mode="html")
         if sent: g["join_msg_id"] = sent.id
     except Exception as e: logger.exception(f"quiz bcast: {e}")
+    # 🎮 v5: پنل کنترل زنده
+    try:
+        gid = g["group_id"]
+        pid = await send_control_panel(
+            g["admin_id"], gid, "کوییز",
+            f"کوییز {len(g['players'])} نفره",
+            stop_cb=_stop_quiz_game, ref=gid)
+        if pid: PANEL_BY_REF[("quiz", gid)] = pid
+    except Exception as e: logger.warning(f"ctrl panel quiz: {e}")
 
 
 async def quiz_refresh_join(g):
@@ -1200,6 +1347,8 @@ async def quiz_finish(g, winner_uid=None):
             try: db.add_points(uid, p["name"], p["score"] * 2, joined=True)
             except Exception: pass
     ACTIVE_GAMES.pop(g["group_id"], None)
+    try: await close_control_panel("quiz", g["group_id"], "پایان طبیعی بازی")
+    except Exception: pass
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1348,6 +1497,15 @@ async def riddle_broadcast(g):
         delay = total * (i + 1) / (len(hints) + 1)
         t = asyncio.create_task(riddle_hint_task(g, hint, i + 1, delay))
         g["hint_tasks"].append(t)
+    # 🎮 v5: پنل کنترل زنده
+    try:
+        gid = g["group_id"]
+        pid = await send_control_panel(
+            g["admin_id"], gid, "معما",
+            g["riddle"].get("title", "—"),
+            stop_cb=_stop_riddle_game, ref=gid)
+        if pid: PANEL_BY_REF[("riddle", gid)] = pid
+    except Exception as e: logger.warning(f"ctrl panel riddle: {e}")
 
 
 async def riddle_hint_task(g, hint, idx, delay):
@@ -1445,6 +1603,8 @@ async def riddle_finish(g):
             try: db.add_points(s["user"]["user_id"], s["user"]["name"], s["score"], joined=True)
             except Exception: pass
     RIDDLE_ACTIVE_GAMES.pop(gid, None)
+    try: await close_control_panel("riddle", gid, "پایان طبیعی بازی")
+    except Exception: pass
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1530,7 +1690,15 @@ async def on_group_message(event):
             txt = build_challenge_text(cid, title, "", "poll", options, deadline)
             sent = await safe_respond(event, txt, parse_mode="html",
                                       buttons=[[Button.url("🎯 شرکت می‌کنم", link)]])
-            if sent: db.set_challenge_message(cid, sent.id)
+            if sent:
+                db.set_challenge_message(cid, sent.id)
+                # 🎮 v5: پنل کنترل زنده
+                try:
+                    pid = await send_control_panel(
+                        event.sender_id, event.chat_id, "نظرسنجی",
+                        title, stop_cb=_stop_challenge, ref=cid)
+                    if pid: PANEL_BY_REF[("challenge", cid)] = pid
+                except Exception as e: logger.warning(f"ctrl poll: {e}")
             return
         if raw.startswith("چالش"):
             content = raw[len("چالش"):].strip().lstrip(":").lstrip("：").strip()
@@ -1548,11 +1716,22 @@ async def on_group_message(event):
             txt = build_challenge_text(cid, title, question, "text", None, deadline)
             sent = await safe_respond(event, txt, parse_mode="html",
                                       buttons=[[Button.url("🎯 شرکت می‌کنم", link)]])
-            if sent: db.set_challenge_message(cid, sent.id)
+            if sent:
+                db.set_challenge_message(cid, sent.id)
+                # 🎮 v5: پنل کنترل زنده
+                try:
+                    pid = await send_control_panel(
+                        event.sender_id, event.chat_id, "چالش متنی",
+                        title, stop_cb=_stop_challenge, ref=cid)
+                    if pid: PANEL_BY_REF[("challenge", cid)] = pid
+                except Exception as e: logger.warning(f"ctrl text: {e}")
             return
     except Exception as ex: logger.exception(f"group handler: {ex}")
 
 
+# ═══════════════════════════════════════════════════════════
+# 📩 PRIVATE HANDLER
+# ═══════════════════════════════════════════════════════════
 @client.on(events.NewMessage(func=lambda e: e.is_private))
 async def on_private(event):
     try:
@@ -1814,15 +1993,16 @@ async def _ask_group(event, data):
     await safe_respond(event, f"{E('group','🏢')} کدوم گروه؟", buttons=btns, parse_mode="html")
 
 
+# ═══════════════════════════════════════════════════════════
+# 🎯 CALLBACK HANDLER
+# ═══════════════════════════════════════════════════════════
 @client.on(events.CallbackQuery())
 async def on_cb(event):
     try:
         uid = event.sender_id
         data = event.data.decode("utf-8", "ignore")
 
-        # ═══════════════════════════════════════════════════════════
-        # 🐛 callbackهای unicorn / spy / td رو نادیده بگیر
-        # ═══════════════════════════════════════════════════════════
+        # callbackهای unicorn / spy / td رو نادیده بگیر
         if data.startswith("uni:"):
             return
         if data.startswith("spy:"):
@@ -2081,6 +2261,57 @@ async def on_cb(event):
                                 parse_mode="html", buttons=None)
             except Exception: pass
             return
+
+        # ═══════════════════════════════════════════════════════════
+        # 🎮 v5: LIVE GAME CONTROL PANEL
+        # ═══════════════════════════════════════════════════════════
+        if data.startswith("gstop:"):
+            try: pid = int(data.split(":", 1)[1])
+            except Exception: await event.answer("خطا", alert=True); return
+            p = GAME_PANELS.get(pid)
+            if not p: await event.answer("پنل منقضی شده", alert=True); return
+            if p.get("admin_id") != uid:
+                await event.answer("⛔ فقط سازنده بازی", alert=True); return
+            if p.get("stopped"):
+                await event.answer("قبلاً متوقف شده", alert=True); return
+            ok = await stop_game_by_panel(pid, by_admin=uid)
+            if ok:
+                await event.answer("🛑 متوقف شد!")
+                try:
+                    await safe_edit(event,
+                        f"{E('cross','❌')} <b>بازی متوقف شد</b>\n{DIV}\n\n"
+                        f"{E('tag','🏷️')} {h(p['title'])}\n"
+                        f"{E('group','🏢')} <code>{p['group_id']}</code>\n"
+                        f"{E('time','⏱')} {now_str()}\n\n"
+                        f"{E('check','✅')} <i>پیام توقف توی گروه فرستاده شد.</i>",
+                        buttons=None, parse_mode="html")
+                except Exception: pass
+            else:
+                await event.answer("خطا در توقف", alert=True)
+            return
+        if data.startswith("gref:"):
+            try: pid = int(data.split(":", 1)[1])
+            except Exception: await event.answer("خطا", alert=True); return
+            p = GAME_PANELS.get(pid)
+            if not p: await event.answer("منقضی", alert=True); return
+            if p.get("admin_id") != uid:
+                await event.answer("⛔", alert=True); return
+            # چک وضعیت زنده بودن بازی
+            gtype = p.get("type"); ref = p.get("ref")
+            alive = False
+            if gtype == "کوییز":
+                g = ACTIVE_GAMES.get(ref)
+                alive = bool(g and g.get("state") in ("waiting", "playing"))
+            elif gtype == "معما":
+                g = RIDDLE_ACTIVE_GAMES.get(ref)
+                alive = bool(g and g.get("state") == "playing")
+            elif gtype in ("نظرسنجی", "چالش متنی"):
+                ch = db.get_challenge(ref)
+                alive = bool(ch and ch.get("is_active"))
+            st_txt = "🟢 در حال اجرا" if alive else "🔴 پایان یافته"
+            await event.answer(st_txt, alert=True)
+            return
+
         if not is_admin(uid): await event.answer("⛔", alert=True); return
         if data == "new_text":
             set_state(uid, "awaiting_title", type="text"); await event.answer()
@@ -2288,8 +2519,13 @@ async def _announce_results(ch):
                 lines.append(f"\n{E('fire','🔥')} <b>#{i}</b>\n<blockquote>{h(a['answer'])}</blockquote>")
         await safe_send(gid, "\n".join(lines), parse_mode="html")
     except Exception as e: logger.exception(f"announce: {e}")
+    try: await close_control_panel("challenge", cid, "بسته شد")
+    except Exception: pass
 
 
+# ═══════════════════════════════════════════════════════════
+# ⏰ DEADLINE WATCHER
+# ═══════════════════════════════════════════════════════════
 async def deadline_watcher():
     await asyncio.sleep(5)
     while True:
@@ -2302,6 +2538,9 @@ async def deadline_watcher():
         await asyncio.sleep(60)
 
 
+# ═══════════════════════════════════════════════════════════
+# 🌐 WEB SERVER
+# ═══════════════════════════════════════════════════════════
 async def start_web_server():
     app = web.Application()
     async def health(request): return web.Response(text="OK — Unicorn Bot running ✨")
@@ -2318,6 +2557,9 @@ async def start_web_server():
     logger.info(f"🌐 Web server on 0.0.0.0:{PORT}")
 
 
+# ═══════════════════════════════════════════════════════════
+# 🚀 MAIN
+# ═══════════════════════════════════════════════════════════
 async def main():
     global BOT_USERNAME
     logger.info("👑 UNICORN ROYAL starting...")
@@ -2327,6 +2569,7 @@ async def main():
     logger.info(f"👥 Admins ({len(ALL_ADMINS)}): {sorted(ALL_ADMINS)}")
     logger.info(f"🕵️ Riddle: Simple | 🧠 Quiz: Medium | 🐛 All bug fixes applied")
     logger.info(f"👥 v4: Group admins are now recognized as admins")
+    logger.info(f"🎮 v5: Live game control panel active")
     await start_web_server()
     await client.start(bot_token=BOT_TOKEN)
     me = await client.get_me()
@@ -2348,6 +2591,25 @@ async def main():
     # ═══════════════════════════════════════════════════════════
     init_td(client, db, is_admin, db.add_points)
 
+    # ═══════════════════════════════════════════════════════════
+    # 💌 v6: STARTUP GREETING TO ALL GLOBAL ADMINS
+    # ═══════════════════════════════════════════════════════════
+    greeting_text = (
+        f"{E('heart','❤️')} {E('kiss','💋')} "
+        f"سلام ادمین گوگولی و خوشگلللللللللللل مهراد گفت بیام بوستون کنم ."
+        f" {E('kiss','💋')} {E('heart','❤️')}"
+    )
+    for admin_id in sorted(ALL_ADMINS):
+        try:
+            await safe_send(admin_id, greeting_text, parse_mode="html")
+            logger.info(f"💌 Greeting sent to admin {admin_id}")
+        except Exception as e:
+            logger.warning(f"greeting failed for {admin_id}: {e}")
+        await asyncio.sleep(0.5)
+
+    # ═══════════════════════════════════════════════════════════
+    # 📢 NOTIFY OWNER
+    # ═══════════════════════════════════════════════════════════
     try:
         await safe_send(OWNER_ID,
                         f"{E('check','✅')} <b>ربات روشن شد</b>\n{DIV}\n\n"
@@ -2361,9 +2623,11 @@ async def main():
                         f"🦄 یونیکورن: <b>فعال</b>\n"
                         f"🎭 جرعت حقیقت: <b>فعال</b>\n"
                         f"👥 ادمین گروه: <b>فعال</b>\n"
+                        f"🎮 پنل کنترل: <b>فعال</b>\n"
                         f"{E('time','⏱')} {now_str()}",
                         parse_mode="html")
     except Exception as e: logger.warning(f"notify owner: {e}")
+
     asyncio.create_task(deadline_watcher())
     logger.info("✅ Ready!")
     await client.run_until_disconnected()
